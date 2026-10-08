@@ -1,20 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Starfield } from './components/Starfield';
-import { PrepareCard } from './components/PrepareCard';
+import { PrepareCard, PREPARE_STAGES } from './components/PrepareCard';
 import { SkyPreview } from './components/SkyPreview';
 import { PackPlayer } from './components/PackPlayer';
 import { useGeolocation } from './hooks/useGeolocation';
 
 type Page = 'home' | 'prepare' | 'listen' | 'about';
 
+const DURATION_WORDS: Record<number, string> = {
+  60: 'sixty seconds',
+  90: 'ninety seconds',
+  120: 'two minutes',
+};
+
 export default function App() {
   const [page, setPage] = useState<Page>('home');
   const [snapshot, setSnapshot] = useState<any>(null);
   const [packData, setPackData] = useState<any>(null);
+  const [duration, setDuration] = useState(90);
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [redShift, setRedShift] = useState(false);
+  const stageTimer = useRef<number | null>(null);
   const geo = useGeolocation();
 
   // Register the service worker so the pack survives airplane mode.
@@ -24,29 +33,27 @@ export default function App() {
         // registration failure is non-fatal — the app still works online
       });
     }
+    return () => {
+      if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
+    };
   }, []);
 
   const handlePrepare = async (params: { lat: number; lon: number; timestamp: string; duration: number }) => {
     setLoading(true);
-    setStage('reading the stars');
+    setError(null);
+    setDuration(params.duration);
+    // The ritual advances on its own while the server works; the final
+    // stage lands only when the pack is truly ready.
+    let step = 0;
+    setStage(PREPARE_STAGES[0]);
+    stageTimer.current = window.setInterval(() => {
+      step = Math.min(step + 1, PREPARE_STAGES.length - 2);
+      setStage(PREPARE_STAGES[step]);
+    }, 1600);
     try {
-      const res = await fetch('/api/sky/snapshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latitude: params.lat,
-          longitude: params.lon,
-          elevation_meters: 0,
-          timestamp: params.timestamp,
-          timezone: 'UTC',
-          duration_seconds: params.duration,
-        }),
-      });
-      if (!res.ok) throw new Error('Server unavailable');
-      const snap = await res.json();
-      setSnapshot(snap);
-      setStage('writing the guide');
-
+      // One call does everything: the pack endpoint already computes the
+      // snapshot, narrates, renders audio, and returns all three. A second
+      // snapshot call would double the work on a 0.1-vCPU server.
       const packRes = await fetch('/api/packs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,38 +66,52 @@ export default function App() {
           duration_seconds: params.duration,
         }),
       });
-      if (packRes.ok) {
-        const pack = await packRes.json();
-        setPackData(pack);
-      }
-      setStage('');
+      if (!packRes.ok) throw new Error(`Server answered ${packRes.status}`);
+      const pack = await packRes.json();
+      if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
+      setSnapshot(pack.snapshot ?? null);
+      setPackData(pack);
+      setStage(PREPARE_STAGES[PREPARE_STAGES.length - 1]);
       setPage('listen');
     } catch {
-      setStage('the telescope is waking up — about a minute');
-      setTimeout(() => setStage(''), 5000);
+      if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
+      setStage('');
+      setError('the telescope is waking up — free servers nap, give it about a minute, then try again');
+      window.setTimeout(() => setError(null), 8000);
     } finally {
       setLoading(false);
     }
   };
 
+  const durationWords = DURATION_WORDS[duration] ?? `${duration} seconds`;
+
   return (
-    <div className={`relative min-h-screen overflow-hidden ${redShift ? 'filter hue-rotate-[300deg] saturate-150' : ''}`}>
+    <div className={`relative min-h-dvh overflow-hidden bg-[#050814] ${redShift ? 'red-shift' : ''}`}>
+      {/* Aurora wash behind the starfield */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="aurora absolute -top-32 -left-24 h-96 w-96 rounded-full bg-indigo-700/20 blur-3xl" />
+        <div
+          className="aurora absolute top-1/3 -right-28 h-[28rem] w-[28rem] rounded-full bg-amber-500/10 blur-3xl"
+          style={{ animationDelay: '-13s' }}
+        />
+      </div>
       <Starfield />
 
       {/* Navigation */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4">
+      <nav className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4">
         <motion.button
           onClick={() => setPage('home')}
-          className="text-amber-300 font-medium tracking-wider text-sm"
+          className="font-display text-amber-300 font-medium tracking-wider text-sm"
           whileHover={{ opacity: 0.8 }}
         >
           skywhisper
         </motion.button>
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-3 sm:gap-4 items-center">
           <button
             onClick={() => setRedShift(!redShift)}
-            className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-xs cursor-pointer hover:border-red-400/50 transition-colors"
+            className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-xs hover:border-red-400/50 transition-colors"
             aria-label="Toggle red-shift night mode"
+            aria-pressed={redShift}
             title="Red-shift mode preserves dark adaptation"
           >
             {redShift ? '🔴' : '🌙'}
@@ -99,7 +120,7 @@ export default function App() {
             <button
               key={p}
               onClick={() => setPage(p)}
-              className={`text-xs cursor-pointer transition-colors ${page === p ? 'text-amber-300' : 'text-white/40 hover:text-white/70'}`}
+              className={`text-xs transition-colors ${page === p ? 'text-amber-300' : 'text-white/40 hover:text-white/70'}`}
             >
               {p}
             </button>
@@ -108,7 +129,7 @@ export default function App() {
       </nav>
 
       {/* Pages */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-4 pt-8 pb-20">
+      <main className="relative z-10 flex flex-col items-center justify-center px-4 pt-6 sm:pt-8 pb-24">
         <AnimatePresence mode="wait">
           {page === 'home' && (
             <motion.div
@@ -116,31 +137,31 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="text-center max-w-xl"
+              className="text-center max-w-xl w-full"
             >
               <motion.h1
-                className="text-5xl md:text-7xl font-bold text-white/90 mb-6 leading-tight"
+                className="font-display text-[2.75rem] leading-[1.05] sm:text-5xl md:text-7xl font-bold text-white/90 mb-5 sm:mb-6"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
               >
-                tonight's sky,
+                tonight&rsquo;s sky,
                 <br />
                 <span className="text-amber-300">whispered.</span>
               </motion.h1>
-              <p className="text-white/50 text-lg mb-8 leading-relaxed">
+              <p className="text-white/50 text-base sm:text-lg mb-7 sm:mb-8 leading-relaxed">
                 put the phone down. let the sky speak.
               </p>
               <motion.button
                 onClick={() => setPage('prepare')}
-                className="px-8 py-4 rounded-2xl bg-amber-500 text-black font-semibold text-lg cursor-pointer shadow-lg shadow-amber-500/20"
+                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-amber-500 text-black font-semibold text-lg shadow-lg shadow-amber-500/20"
                 whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(245,201,123,0.3)' }}
                 whileTap={{ scale: 0.97 }}
               >
                 prepare my sky
               </motion.button>
 
-              <div className="grid grid-cols-3 gap-4 mt-16">
+              <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-12 sm:mt-16">
                 {[
                   { icon: '📵', label: 'screen off' },
                   { icon: '📡', label: 'works offline' },
@@ -148,11 +169,11 @@ export default function App() {
                 ].map(tile => (
                   <motion.div
                     key={tile.label}
-                    className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm"
+                    className="p-3 sm:p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm"
                     whileHover={{ y: -2, borderColor: 'rgba(255,255,255,0.12)' }}
                   >
-                    <span className="text-2xl">{tile.icon}</span>
-                    <p className="text-white/40 text-xs mt-2">{tile.label}</p>
+                    <span className="text-xl sm:text-2xl" aria-hidden="true">{tile.icon}</span>
+                    <p className="text-white/40 text-[11px] sm:text-xs mt-2">{tile.label}</p>
                   </motion.div>
                 ))}
               </div>
@@ -167,16 +188,23 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="w-full max-w-2xl space-y-6"
             >
-              {geo.lat && geo.lon && (
+              {geo.lat !== null && geo.lon !== null && (
                 <p className="text-white/30 text-xs text-center">
-                  location detected: {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)}
+                  location detected: {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)} — prefilled below
                 </p>
               )}
               <PrepareCard
                 onPrepare={handlePrepare}
                 loading={loading}
                 stage={stage}
+                initialLat={geo.lat}
+                initialLon={geo.lon}
               />
+              {error !== null && (
+                <p className="text-center text-amber-300/80 text-sm" role="alert">
+                  {error}
+                </p>
+              )}
               {snapshot && <SkyPreview snapshot={snapshot} loading={loading} />}
             </motion.div>
           )}
@@ -194,10 +222,12 @@ export default function App() {
                 animate={{ boxShadow: ['0 0 0px rgba(245,201,123,0)', '0 0 30px rgba(245,201,123,0.2)', '0 0 0px rgba(245,201,123,0)'] }}
                 transition={{ duration: 3, repeat: Infinity }}
               >
-                <span className="text-4xl">🎧</span>
+                <span className="text-4xl" aria-hidden="true">🎧</span>
               </motion.div>
-              <h2 className="text-2xl text-white/80 font-medium">your sky is ready.</h2>
-              <p className="text-white/40 text-sm">put the phone face-down. we'll talk for ninety seconds, then leave you alone.</p>
+              <h2 className="font-display text-2xl text-white/80 font-medium">your sky is ready.</h2>
+              <p className="text-white/40 text-sm">
+                put the phone face-down. we&rsquo;ll talk for {durationWords}, then leave you alone.
+              </p>
               <PackPlayer
                 audioUrl={packData?.audioPath ?? null}
                 transcriptUrl={packData?.transcriptPath ?? null}
@@ -215,9 +245,9 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="max-w-xl text-center space-y-6"
+              className="max-w-xl w-full text-center space-y-6"
             >
-              <h2 className="text-3xl text-white/80 font-medium">about skywhisper</h2>
+              <h2 className="font-display text-2xl sm:text-3xl text-white/80 font-medium">about skywhisper</h2>
               <div className="text-left space-y-4 text-white/50 text-sm leading-relaxed">
                 <p>
                   human eyes need 20–30 minutes of darkness for rod cells to fully adapt.
@@ -230,7 +260,7 @@ export default function App() {
                   audio is synthesized before you leave home. outside, you just listen.
                 </p>
                 <p>
-                  one fist-width held at arm's length spans approximately 10 degrees of sky.
+                  one fist-width held at arm&rsquo;s length spans approximately 10 degrees of sky.
                   directions are given in body-relative terms, never raw coordinates.
                 </p>
                 <div className="pt-4 border-t border-white/10">
@@ -242,7 +272,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setPage('home')}
-                className="text-amber-300/60 text-sm cursor-pointer hover:text-amber-300 transition-colors"
+                className="text-amber-300/60 text-sm hover:text-amber-300 transition-colors"
               >
                 ← back to the sky
               </button>
@@ -252,8 +282,8 @@ export default function App() {
       </main>
 
       {/* Safety notice */}
-      <div className="fixed bottom-4 left-0 right-0 text-center z-20">
-        <p className="text-white/20 text-[10px] px-4">
+      <div className="safe-bottom fixed bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-4">
+        <p className="text-center text-white/20 text-[10px] px-4">
           outdoor safety: do not walk while listening. stay away from roads, water, cliffs, and traffic.
         </p>
       </div>

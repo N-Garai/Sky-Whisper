@@ -1,16 +1,105 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #050814;
+  color: #e7ecf7;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-display {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-body {
-  background: #050814;
-  color: #E7ECF7;
-  font-family: 'Space Grotesk', Inter, system-ui, sans-serif;
-  min-height: 100vh;
+button,
+a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-#root {
-  min-height: 100vh;
+button {
+  cursor: pointer;
+  font: inherit;
+}
+
+input {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(245, 201, 123, 0.35);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(245, 201, 123, 0.7);
+  outline-offset: 2px;
+}
+
+/* Notch / gesture-bar safe area for the fixed footer + nav. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* True night mode: deep-red monochrome that preserves dark adaptation.
+   Applied to the app root when the user toggles red-shift. */
+.red-shift {
+  filter: grayscale(1) sepia(1) saturate(7) hue-rotate(-55deg) brightness(0.62);
+}
+
+/* Slow aurora drift behind the starfield. Pure CSS, GPU-composited. */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(-4%, -2%, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) scale(1.08);
+    opacity: 1;
+  }
+}
+
+.aurora {
+  animation: aurora-drift 26s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora {
+    animation: none;
+  }
+}
+
+/* Thin dark scrollbars so desktop overflow never flashes white. */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #050814;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
 }

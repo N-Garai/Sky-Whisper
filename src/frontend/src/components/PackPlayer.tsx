@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useOfflinePack } from '../hooks/useOfflinePack';
@@ -68,7 +68,18 @@ export function PackPlayer({ audioUrl, transcriptUrl, script, packId, audioAvail
     }
   };
 
-  const playSrc = offline.audioBlob ? URL.createObjectURL(offline.audioBlob) : audioUrl;
+  // Memoized: creating the object URL per render would hand the <audio>
+  // element a new src every render and restart playback from zero.
+  const playSrc = useMemo(
+    () => (offline.audioBlob ? URL.createObjectURL(offline.audioBlob) : audioUrl),
+    [offline.audioBlob, audioUrl],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (playSrc !== null && playSrc.startsWith('blob:')) URL.revokeObjectURL(playSrc);
+    };
+  }, [playSrc]);
 
   return (
     <div className="w-full flex flex-col items-center gap-6">

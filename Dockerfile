@@ -1,6 +1,6 @@
-# Build-only. Never run locally — the user's machine has 8 GB RAM.
-# Render uses the native Python runtime (see render.yaml); this Dockerfile
-# exists for parity and self-hosting on any container host.
+# Production image. Render builds this Dockerfile directly; the same file
+# serves for self-hosting on any container host. Never run the build
+# locally — the dev machine has 8 GB RAM.
 
 FROM node:20-slim AS frontend
 WORKDIR /app/src/frontend
@@ -9,7 +9,9 @@ RUN npm ci
 COPY src/frontend/ ./
 RUN npx tsc -b && npx vite build
 
-FROM node:20-slim AS mastra
+# @mastra/core requires Node >= 22.13 — the 20-slim image used for the
+# lightweight frontend build is not enough here.
+FROM node:22-slim AS mastra
 WORKDIR /app/src/backend/mastra
 COPY src/backend/mastra/package.json src/backend/mastra/package-lock.json ./
 RUN npm ci
@@ -18,8 +20,14 @@ RUN npm run build && npm prune --omit=dev
 
 FROM python:3.11-slim AS backend
 WORKDIR /app
-# Node runtime for the Mastra orchestration harness (absent -> direct path).
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs \
+# Node 22 runtime for the Mastra orchestration harness (same major as the
+# build stage; Debian's stock nodejs is v20 and would trip Mastra's engine
+# check at runtime). Absent/broken node degrades to the direct model path.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -30,4 +38,5 @@ COPY --from=mastra /app/src/backend/mastra/node_modules ./src/backend/mastra/nod
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 EXPOSE 8080
-CMD ["uvicorn", "src.backend.api.routes:app", "--host", "0.0.0.0", "--port", "8080"]
+# $PORT is injected by the host (Render sets it); default keeps docker run simple.
+CMD ["sh", "-c", "uvicorn src.backend.api.routes:app --host 0.0.0.0 --port ${PORT:-8080}"]
