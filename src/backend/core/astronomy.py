@@ -32,7 +32,7 @@ from src.shared.sky_snapshot import (
 )
 from src.shared.schemas import PackRequest
 
-EPHEMERIS_FILE = os.getenv("SKYWHISPER_EPHEMERIS", "de440s.bsp")
+EPHEMERIS_FILE = os.getenv("SKYWHISPER_EPHEMERIS", "de421.bsp")
 
 # Cache the timescale + ephemeris load — a single load per process keeps
 # the Render free-tier memory footprint flat across requests.

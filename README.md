@@ -82,6 +82,7 @@ python -m pytest tests/ -q
 - [api.md](docs/api.md) — endpoint reference
 - [accuracy.md](docs/accuracy.md) — verification method and cross-check table
 - [deployment.md](docs/deployment.md) — Render, Docker, local
+- [submission.md](docs/submission.md) — publishing checklist and verified partner links
 - [stack.md](docs/stack.md) — every dependency and its license
 - [privacy.md](docs/privacy.md) — what leaves your device
 - [development-log.md](docs/development-log.md) — bugs found and fixed
