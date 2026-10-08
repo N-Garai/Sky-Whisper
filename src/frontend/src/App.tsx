@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Starfield } from './components/Starfield';
+import { HomePage } from './components/home/HomePage';
 import { PrepareCard, PREPARE_STAGES } from './components/PrepareCard';
 import { SkyPreview } from './components/SkyPreview';
 import { PackPlayer } from './components/PackPlayer';
@@ -23,6 +24,7 @@ export default function App() {
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [redShift, setRedShift] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const stageTimer = useRef<number | null>(null);
   const geo = useGeolocation();
 
@@ -33,8 +35,12 @@ export default function App() {
         // registration failure is non-fatal — the app still works online
       });
     }
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
+      window.removeEventListener('scroll', onScroll);
     };
   }, []);
 
@@ -98,7 +104,9 @@ export default function App() {
       <Starfield />
 
       {/* Navigation */}
-      <nav className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4">
+      <nav className={`sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-4 transition-colors ${
+        scrolled ? 'bg-[#050814]/75 backdrop-blur-md border-b border-white/[0.06]' : 'border-b border-transparent'
+      }`}>
         <motion.button
           onClick={() => setPage('home')}
           className="font-display text-amber-300 font-medium tracking-wider text-sm"
@@ -134,49 +142,12 @@ export default function App() {
           {page === 'home' && (
             <motion.div
               key="home"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="text-center max-w-xl w-full"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="w-full"
             >
-              <motion.h1
-                className="font-display text-[2.75rem] leading-[1.05] sm:text-5xl md:text-7xl font-bold text-white/90 mb-5 sm:mb-6"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              >
-                tonight&rsquo;s sky,
-                <br />
-                <span className="text-amber-300">whispered.</span>
-              </motion.h1>
-              <p className="text-white/50 text-base sm:text-lg mb-7 sm:mb-8 leading-relaxed">
-                put the phone down. let the sky speak.
-              </p>
-              <motion.button
-                onClick={() => setPage('prepare')}
-                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-amber-500 text-black font-semibold text-lg shadow-lg shadow-amber-500/20"
-                whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(245,201,123,0.3)' }}
-                whileTap={{ scale: 0.97 }}
-              >
-                prepare my sky
-              </motion.button>
-
-              <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-12 sm:mt-16">
-                {[
-                  { icon: '📵', label: 'screen off' },
-                  { icon: '📡', label: 'works offline' },
-                  { icon: '🔭', label: 'open source' },
-                ].map(tile => (
-                  <motion.div
-                    key={tile.label}
-                    className="p-3 sm:p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm"
-                    whileHover={{ y: -2, borderColor: 'rgba(255,255,255,0.12)' }}
-                  >
-                    <span className="text-xl sm:text-2xl" aria-hidden="true">{tile.icon}</span>
-                    <p className="text-white/40 text-[11px] sm:text-xs mt-2">{tile.label}</p>
-                  </motion.div>
-                ))}
-              </div>
+              <HomePage onPrepare={() => setPage('prepare')} lat={geo.lat} lon={geo.lon} />
             </motion.div>
           )}
 

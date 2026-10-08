@@ -90,6 +90,59 @@ input {
   .aurora {
     animation: none;
   }
+  .marquee-track {
+    animation: none;
+  }
+  .constellation-line,
+  .constellation-star {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Infinite marquee ribbon. The track holds two identical rows and slides
+   exactly one row width per loop for a seamless cycle. */
+@keyframes marquee-slide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee-slide 30s linear infinite;
+  will-change: transform;
+}
+
+/* Constellation draw-in: lines sweep via dashoffset, stars fade up behind. */
+.constellation-line {
+  stroke: rgba(245, 201, 123, 0.45);
+  stroke-width: 1;
+  animation: constellation-draw 1.4s ease-out forwards;
+}
+
+.constellation-star {
+  fill: rgba(231, 236, 247, 0.9);
+  opacity: 0;
+  animation: constellation-twinkle 0.8s ease-out forwards;
+}
+
+@keyframes constellation-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes constellation-twinkle {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Thin dark scrollbars so desktop overflow never flashes white. */
