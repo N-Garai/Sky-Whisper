@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  skywhisper:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - LLM_PROVIDER=template
+      - PORT=8080
+    volumes:
+      - ./data:/app/data
+      - ./tmp:/app/tmp

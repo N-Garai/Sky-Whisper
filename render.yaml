@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: skywhisper
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt && cd src/frontend && npm ci && npm run build && cd ../backend/mastra && npm ci && npm run build
+    startCommand: uvicorn src.backend.api.routes:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: NODE_VERSION
+        value: "20"
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVEN_VOICE_ID
+        sync: false
+      - key: LLM_PROVIDER
+        value: template
+      - key: SKYWHISPER_EPHEMERIS
+        value: de421.bsp

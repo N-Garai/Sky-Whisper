@@ -1,0 +1,17 @@
+# Keep the build context small and secret-free.
+node_modules/
+src/frontend/node_modules/
+src/frontend/dist/
+.git/
+.agent/
+roadmap/
+.kilo/
+data/ephemeris/
+data/tle/
+tmp/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+*.bsp
