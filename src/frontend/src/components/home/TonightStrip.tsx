@@ -11,8 +11,8 @@ interface Tonight {
 
 /**
  * Live sky strip — one cheap snapshot call proves the backend is awake and
- * turns the landing into a dashboard. Best-effort: any failure hides the
- * strip silently instead of showing an error state on the marketing page.
+ * turns the landing into a dashboard. Best-effort by design: any failure hides
+ * the strip silently rather than showing an error state on the marketing page.
  */
 export function TonightStrip({ lat, lon }: { lat: number | null; lon: number | null }) {
   const [data, setData] = useState<Tonight | null>(null);
@@ -22,6 +22,7 @@ export function TonightStrip({ lat, lon }: { lat: number | null; lon: number | n
     let cancelled = false;
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 12000);
+
     (async () => {
       try {
         const res = await fetch('/api/sky/snapshot', {
@@ -54,6 +55,7 @@ export function TonightStrip({ lat, lon }: { lat: number | null; lon: number | n
         window.clearTimeout(timer);
       }
     })();
+
     return () => {
       cancelled = true;
       ctrl.abort();
@@ -74,33 +76,34 @@ export function TonightStrip({ lat, lon }: { lat: number | null; lon: number | n
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 18 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className="w-full max-w-3xl mx-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md px-5 sm:px-8 py-4 sm:py-5"
+      viewport={{ once: true, margin: '-10% 0px' }}
+      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+      className="panel mx-auto w-full max-w-3xl px-5 py-5 sm:px-8 sm:py-6"
     >
-      <div className="flex items-center gap-2 mb-3">
+      <div className="mb-4 flex items-center gap-2.5">
         <span className="relative flex h-2 w-2" aria-hidden="true">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+          <span className="pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
         </span>
-        <p className="text-[11px] uppercase tracking-[0.3em] text-white/40">
+        <p className="eyebrow !text-amber-300/60">
           {loading ? 'reading tonight…' : 'tonight above you'}
         </p>
       </div>
+
       {loading || data === null ? (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-hidden="true">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className="h-9 rounded-lg bg-white/[0.05] animate-pulse" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-6" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-10 animate-pulse rounded-lg bg-white/[0.05]" />
           ))}
         </div>
       ) : (
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
           {cells.map(([k, v]) => (
             <div key={k} className="min-w-0">
-              <dt className="text-[11px] uppercase tracking-[0.2em] text-white/35">{k}</dt>
-              <dd className="font-display text-white/90 text-base sm:text-lg truncate">{v}</dd>
+              <dt className="font-mono text-[0.58rem] uppercase tracking-[0.2em] text-white/40">{k}</dt>
+              <dd className="num mt-1 truncate text-base text-white/90 sm:text-lg">{v}</dd>
             </div>
           ))}
         </dl>

@@ -1,27 +1,41 @@
 const PHRASES = ['screen off', 'works offline', 'open source', 'look up'];
 
-export function Marquee() {
-  const row = (hidden: boolean) => (
-    <div className="flex shrink-0 items-center" aria-hidden={hidden}>
-      {PHRASES.map(p => (
-        <span key={`${hidden}-${p}`} className="flex items-center">
-          <span className="font-display mx-6 sm:mx-10 text-sm sm:text-base uppercase tracking-[0.35em] text-white/35">
-            {p}
-          </span>
-          <span className="text-amber-400/60 text-xs">✦</span>
+/** One identical row; the track holds two so the loop is seamless. */
+const Row = ({ hidden }: { hidden: boolean }) => (
+  <div className="flex shrink-0 items-center" aria-hidden={hidden || undefined}>
+    {PHRASES.map((p) => (
+      <span key={p} className="flex items-center">
+        <span className="font-display mx-6 text-xs uppercase tracking-[0.42em] text-white/38 sm:mx-10 sm:text-sm">
+          {p}
         </span>
-      ))}
-    </div>
-  );
+        <span className="text-[0.6rem] text-amber-300/45" aria-hidden="true">
+          ✦
+        </span>
+      </span>
+    ))}
+  </div>
+);
 
+/**
+ * Infinite ribbon between the hero and the ritual. Pure CSS transform, so it
+ * costs nothing on the main thread; edges fade into the background instead
+ * of hard-clipping the text.
+ */
+export function Marquee() {
   return (
-    <div className="relative overflow-hidden border-y border-white/[0.06] bg-black/30 py-4">
+    <div className="relative overflow-hidden border-y border-white/[0.06] bg-black/25 py-4">
       <div className="marquee-track flex w-max">
-        {row(false)}
-        {row(true)}
+        <Row hidden={false} />
+        <Row hidden />
       </div>
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#050814] to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#050814] to-transparent" />
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-abyss to-transparent sm:w-32"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute inset-y-0 right-0 w-20 bg-gradient-to-l from-abyss to-transparent sm:w-32"
+        aria-hidden="true"
+      />
     </div>
   );
 }

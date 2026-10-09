@@ -1,22 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Starfield } from './components/Starfield';
 import { HomePage } from './components/home/HomePage';
+import { Nav } from './components/Nav';
 import { PrepareCard, PREPARE_STAGES } from './components/PrepareCard';
-import { SkyPreview } from './components/SkyPreview';
 import { PackPlayer } from './components/PackPlayer';
+import { SkyPreview } from './components/SkyPreview';
+import { AboutSection } from './components/AboutSection';
+import { Footer } from './components/Footer';
+import { Eyebrow, Reveal } from './components/home/Constellation';
 import { useGeolocation } from './hooks/useGeolocation';
 
-type Page = 'home' | 'prepare' | 'listen' | 'about';
-
-const DURATION_WORDS: Record<number, string> = {
-  60: 'sixty seconds',
-  90: 'ninety seconds',
-  120: 'two minutes',
-};
-
 export default function App() {
-  const [page, setPage] = useState<Page>('home');
   const [snapshot, setSnapshot] = useState<any>(null);
   const [packData, setPackData] = useState<any>(null);
   const [duration, setDuration] = useState(90);
@@ -24,8 +19,9 @@ export default function App() {
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [redShift, setRedShift] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const stageTimer = useRef<number | null>(null);
+  const prepareRef = useRef<HTMLElement>(null);
+  const listenRef = useRef<HTMLDivElement>(null);
   const geo = useGeolocation();
 
   // Register the service worker so the pack survives airplane mode.
@@ -35,12 +31,8 @@ export default function App() {
         // registration failure is non-fatal — the app still works online
       });
     }
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
-      window.removeEventListener('scroll', onScroll);
     };
   }, []);
 
@@ -56,6 +48,7 @@ export default function App() {
       step = Math.min(step + 1, PREPARE_STAGES.length - 2);
       setStage(PREPARE_STAGES[step]);
     }, 1600);
+
     try {
       // One call does everything: the pack endpoint already computes the
       // snapshot, narrates, renders audio, and returns all three. A second
@@ -78,7 +71,10 @@ export default function App() {
       setSnapshot(pack.snapshot ?? null);
       setPackData(pack);
       setStage(PREPARE_STAGES[PREPARE_STAGES.length - 1]);
-      setPage('listen');
+      // Bring the listener to the result once it exists.
+      window.setTimeout(() => {
+        listenRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
     } catch {
       if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
       setStage('');
@@ -89,174 +85,162 @@ export default function App() {
     }
   };
 
-  const durationWords = DURATION_WORDS[duration] ?? `${duration} seconds`;
+  const hasPack = packData !== null;
 
   return (
-    <div className={`relative min-h-dvh overflow-hidden bg-[#050814] ${redShift ? 'red-shift' : ''}`}>
-      {/* Aurora wash behind the starfield */}
-      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="aurora absolute -top-32 -left-24 h-96 w-96 rounded-full bg-indigo-700/20 blur-3xl" />
+    <div className={`relative min-h-dvh bg-abyss ${redShift ? 'red-shift' : ''}`}>
+      {/* ————— background: nebula + living starfield ————— */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
         <div
-          className="aurora absolute top-1/3 -right-28 h-[28rem] w-[28rem] rounded-full bg-amber-500/10 blur-3xl"
-          style={{ animationDelay: '-13s' }}
+          className="nebula nebula-a absolute -left-[18%] -top-[22%] h-[46rem] w-[46rem] rounded-full blur-[110px]"
+          style={{ background: 'radial-gradient(circle, rgba(109,92,240,0.42), transparent 68%)' }}
+        />
+        <div
+          className="nebula nebula-b absolute -right-[20%] top-[22%] h-[40rem] w-[40rem] rounded-full blur-[120px]"
+          style={{ background: 'radial-gradient(circle, rgba(245,201,123,0.20), transparent 66%)' }}
+        />
+        <div
+          className="nebula nebula-c absolute bottom-[-24%] left-[26%] h-[42rem] w-[42rem] rounded-full blur-[130px]"
+          style={{ background: 'radial-gradient(circle, rgba(47,42,107,0.62), transparent 70%)' }}
+        />
+        {/* Vignette keeps text legible over the brightest part of the wash. */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(4,6,15,0.55) 78%, rgba(4,6,15,0.9) 100%)',
+          }}
         />
       </div>
-      <Starfield />
+      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
+        <Starfield />
+      </div>
 
-      {/* Navigation */}
-      <nav className={`sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-4 transition-colors ${
-        scrolled ? 'bg-[#050814]/75 backdrop-blur-md border-b border-white/[0.06]' : 'border-b border-transparent'
-      }`}>
-        <motion.button
-          onClick={() => setPage('home')}
-          className="font-display text-amber-300 font-medium tracking-wider text-sm"
-          whileHover={{ opacity: 0.8 }}
-        >
-          skywhisper
-        </motion.button>
-        <div className="flex gap-3 sm:gap-4 items-center">
-          <button
-            onClick={() => setRedShift(!redShift)}
-            className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-xs hover:border-red-400/50 transition-colors"
-            aria-label="Toggle red-shift night mode"
-            aria-pressed={redShift}
-            title="Red-shift mode preserves dark adaptation"
-          >
-            {redShift ? '🔴' : '🌙'}
-          </button>
-          {(['home', 'prepare', 'about'] as Page[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              className={`text-xs transition-colors ${page === p ? 'text-amber-300' : 'text-white/40 hover:text-white/70'}`}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      </nav>
+      {/* ————— app ————— */}
+      <div className="relative z-10">
+        <Nav redShift={redShift} onToggleRedShift={() => setRedShift((v) => !v)} />
 
-      {/* Pages */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-4 pt-6 sm:pt-8 pb-24">
-        <AnimatePresence mode="wait">
-          {page === 'home' && (
-            <motion.div
-              key="home"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="w-full"
-            >
-              <HomePage onPrepare={() => setPage('prepare')} lat={geo.lat} lon={geo.lon} />
-            </motion.div>
-          )}
+        <main>
+          <HomePage
+            onPrepare={() =>
+              document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+            lat={geo.lat}
+            lon={geo.lon}
+          />
 
-          {page === 'prepare' && (
-            <motion.div
-              key="prepare"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="w-full max-w-2xl space-y-6"
-            >
-              {geo.lat !== null && geo.lon !== null && (
-                <p className="text-white/30 text-xs text-center">
-                  location detected: {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)} — prefilled below
-                </p>
-              )}
-              <PrepareCard
-                onPrepare={handlePrepare}
-                loading={loading}
-                stage={stage}
-                initialLat={geo.lat}
-                initialLon={geo.lon}
-              />
-              {error !== null && (
-                <p className="text-center text-amber-300/80 text-sm" role="alert">
-                  {error}
-                </p>
-              )}
-              {snapshot && <SkyPreview snapshot={snapshot} loading={loading} />}
-            </motion.div>
-          )}
+          {/* ————— PREPARE ————— */}
+          <section id="prepare" ref={prepareRef} className="section">
+            <div className="shell">
+              <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-start lg:gap-14">
+                {/* Form column */}
+                <div>
+                  <Eyebrow>step two · before you leave</Eyebrow>
+                  <h2 className="h-section mt-5 text-white/92">
+                    compute it now,
+                    <br />
+                    <span className="text-white/38">so nothing glows later.</span>
+                  </h2>
+                  <Reveal delay={0.1} className="mt-6">
+                    <p className="lead max-w-md">
+                      pick where you&rsquo;ll be standing. the server works out exactly what will be
+                      overhead tonight — sun, moon, planets, named stars — writes the narration, and
+                      seals it into a pack you can carry with no signal at all.
+                    </p>
+                  </Reveal>
 
-          {page === 'listen' && (
-            <motion.div
-              key="listen"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg text-center space-y-6"
-            >
-              <motion.div
-                className="w-24 h-24 mx-auto rounded-full border-2 border-amber-400/30 flex items-center justify-center"
-                animate={{ boxShadow: ['0 0 0px rgba(245,201,123,0)', '0 0 30px rgba(245,201,123,0.2)', '0 0 0px rgba(245,201,123,0)'] }}
-                transition={{ duration: 3, repeat: Infinity }}
-              >
-                <span className="text-4xl" aria-hidden="true">🎧</span>
-              </motion.div>
-              <h2 className="font-display text-2xl text-white/80 font-medium">your sky is ready.</h2>
-              <p className="text-white/40 text-sm">
-                put the phone face-down. we&rsquo;ll talk for {durationWords}, then leave you alone.
-              </p>
-              <PackPlayer
-                audioUrl={packData?.audioPath ?? null}
-                transcriptUrl={packData?.transcriptPath ?? null}
-                packId={packData?.packId ?? null}
-                audioAvailable={Boolean(packData?.audio?.available)}
-                script={packData?.narration?.script || snapshot?.warnings?.[0] || 'look up tonight.'}
-              />
-              {snapshot && <SkyPreview snapshot={snapshot} />}
-            </motion.div>
-          )}
+                  {geo.lat !== null && geo.lon !== null && (
+                    <Reveal delay={0.16} className="mt-6">
+                      <p className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        </span>
+                        location detected · {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)}
+                      </p>
+                    </Reveal>
+                  )}
 
-          {page === 'about' && (
-            <motion.div
-              key="about"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="max-w-xl w-full text-center space-y-6"
-            >
-              <h2 className="font-display text-2xl sm:text-3xl text-white/80 font-medium">about skywhisper</h2>
-              <div className="text-left space-y-4 text-white/50 text-sm leading-relaxed">
-                <p>
-                  human eyes need 20–30 minutes of darkness for rod cells to fully adapt.
-                  a single glance at a bright screen resets that adaptation. skywhisper moves
-                  all computation before your outing so the screen stays off in the field.
-                </p>
-                <p>
-                  celestial coordinates are computed deterministically using open-source
-                  ephemeris libraries. an open-weight language model narrates only verified facts.
-                  audio is synthesized before you leave home. outside, you just listen.
-                </p>
-                <p>
-                  one fist-width held at arm&rsquo;s length spans approximately 10 degrees of sky.
-                  directions are given in body-relative terms, never raw coordinates.
-                </p>
-                <div className="pt-4 border-t border-white/10">
-                  <p className="text-white/30 text-xs">
-                    built with open-source astronomy engines, open-weight language models,
-                    and deployed on free-tier infrastructure. no tracking, no accounts, no ads.
-                  </p>
+                  <div className="mt-8">
+                    <PrepareCard
+                      onPrepare={handlePrepare}
+                      loading={loading}
+                      stage={stage}
+                      initialLat={geo.lat}
+                      initialLon={geo.lon}
+                    />
+                  </div>
+
+                  {error !== null && (
+                    <p className="mt-4 text-center text-sm text-amber-300/85" role="alert">
+                      {error}
+                    </p>
+                  )}
+                </div>
+
+                {/* Result column */}
+                <div className="lg:sticky lg:top-28">
+                  <AnimatePresence mode="wait">
+                    {hasPack ? (
+                      <motion.div
+                        key="result"
+                        initial={{ opacity: 0, y: 24 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -16 }}
+                        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-6"
+                      >
+                        <div className="text-center lg:text-left">
+                          <Eyebrow>step three · outside</Eyebrow>
+                          <h3 className="h-display mt-4 text-2xl text-white/92 sm:text-3xl">
+                            your sky is ready.
+                          </h3>
+                          <p className="copy mt-2 text-sm">
+                            put the phone face-down. we&rsquo;ll talk for {duration === 60 ? 'sixty' : duration === 120 ? 'two' : 'ninety'}{' '}
+                            {duration === 120 ? 'minutes' : 'seconds'}, then leave you alone.
+                          </p>
+                        </div>
+                        <PackPlayer
+                          audioUrl={packData?.audioPath ?? null}
+                          transcriptUrl={packData?.transcriptPath ?? null}
+                          packId={packData?.packId ?? null}
+                          audioAvailable={Boolean(packData?.audio?.available)}
+                          script={packData?.narration?.script || snapshot?.warnings?.[0] || 'look up tonight.'}
+                        />
+                        {snapshot && <SkyPreview snapshot={snapshot} />}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="empty"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="panel grid min-h-[22rem] place-items-center p-8 text-center"
+                      >
+                        <div>
+                          <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full border border-white/10 bg-white/[0.02]">
+                            <span className="text-2xl opacity-45" aria-hidden="true">
+                              🔭
+                            </span>
+                          </div>
+                          <p className="font-display text-lg text-white/70">your sky, once you ask for it</p>
+                          <p className="copy mx-auto mt-2 max-w-xs text-sm">
+                            nothing appears here until you prepare. the pack is computed, narrated,
+                            and sealed before a single star comes out.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
-              <button
-                onClick={() => setPage('home')}
-                className="text-amber-300/60 text-sm hover:text-amber-300 transition-colors"
-              >
-                ← back to the sky
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
+            </div>
+          </section>
 
-      {/* Safety notice */}
-      <div className="safe-bottom fixed bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-4">
-        <p className="text-center text-white/20 text-[10px] px-4">
-          outdoor safety: do not walk while listening. stay away from roads, water, cliffs, and traffic.
-        </p>
+          <AboutSection />
+        </main>
+
+        <Footer />
       </div>
     </div>
   );

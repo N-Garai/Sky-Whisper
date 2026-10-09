@@ -1,18 +1,20 @@
-{
-  "name": "SkyWhisper",
+﻿{
+  "name": "SkyWhisper — screenless astronomy",
   "short_name": "SkyWhisper",
-  "description": "Screenless astronomy — prepare a narration of tonight's sky, then listen outdoors with the screen off.",
+  "description": "Prepare a narration of tonight's sky at home, then listen outdoors with the screen off.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#050814",
-  "theme_color": "#050814",
-  "orientation": "portrait",
+  "orientation": "any",
+  "background_color": "#04060f",
+  "theme_color": "#04060f",
+  "categories": ["education", "utilities", "lifestyle"],
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/favicon-32.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

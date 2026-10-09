@@ -1,25 +1,167 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { useRef } from 'react';
+import {
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useTransform,
+} from 'framer-motion';
 import { Marquee } from './Marquee';
-import { Constellation } from './Constellation';
+import { Constellation, Eyebrow, Reveal, SplitText } from './Constellation';
 import { TonightStrip } from './TonightStrip';
 
-const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-function RevealLine({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+/* ------------------------------------------------------------------ *
+ * Hero art — an orbiting crescent on a tilted plane.
+ *
+ * Three nested rings rotate on separate axes in real 3D (perspective +
+ * preserve-3d), so the figure has depth as the pointer moves. The whole
+ * scope tilts toward the cursor via spring-damped motion values.
+ * ------------------------------------------------------------------ */
+
+const ORBITS = [
+  { size: 'clamp(15rem, 26vw, 24rem)', duration: '26s', tilt: 'rotateX(72deg)', label: '' },
+  { size: 'clamp(19rem, 32vw, 30rem)', duration: '38s', tilt: 'rotateX(66deg) rotateY(12deg)', label: '' },
+  { size: 'clamp(23rem, 38vw, 36rem)', duration: '54s', tilt: 'rotateX(78deg) rotateY(-10deg)', label: '' },
+];
+
+function OrbitScope() {
+  const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
+
+  // Pointer position normalised to -1..1 around the element centre.
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+
+  const rotateY = useSpring(useTransform(px, [-1, 1], [-18, 18]), { stiffness: 90, damping: 18 });
+  const rotateX = useSpring(useTransform(py, [-1, 1], [12, -12]), { stiffness: 90, damping: 18 });
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (reduce) return;
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    px.set(((e.clientX - r.left) / r.width) * 2 - 1);
+    py.set(((e.clientY - r.top) / r.height) * 2 - 1);
+  };
+
+  const onPointerLeave = () => {
+    px.set(0);
+    py.set(0);
+  };
+
   return (
-    <span className="block overflow-hidden pb-[0.08em] -mb-[0.08em]">
-      <motion.span
-        className="block"
-        initial={reduce ? { y: '0%', opacity: 1 } : { y: '112%' }}
-        animate={{ y: '0%' }}
-        transition={{ duration: 1, ease: EASE, delay }}
+    <div
+      ref={ref}
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
+      className="pointer-events-auto relative grid aspect-square w-full max-w-[30rem] place-items-center"
+      style={{ perspective: '900px' }}
+      aria-hidden="true"
+    >
+      {/* Ambient glow behind the scope */}
+      <div className="absolute inset-[12%] rounded-full bg-amber-400/10 blur-3xl" />
+
+      <motion.div
+        className="relative grid h-full w-full place-items-center"
+        style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}
       >
-        {children}
-      </motion.span>
-    </span>
+        {/* Rings */}
+        {ORBITS.map((o, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full border"
+            style={{
+              width: o.size,
+              height: o.size,
+              borderColor: `rgba(245, 201, 123, ${0.16 - i * 0.035})`,
+              transform: `${o.tilt} translateZ(${i * 8}px)`,
+              transformStyle: 'preserve-3d',
+            }}
+          >
+            {/* A satellite riding this ring */}
+            <span
+              className="absolute left-1/2 top-1/2 h-full w-full"
+              style={{
+                transformStyle: 'preserve-3d',
+                animation: reduce ? undefined : `orbit ${o.duration} linear infinite`,
+                ['--orbit-r' as string]: `calc(${o.size} / 2)`,
+              }}
+            >
+              <span
+                className="absolute block rounded-full"
+                style={{
+                  width: i === 1 ? 7 : 5,
+                  height: i === 1 ? 7 : 5,
+                  background: i === 1 ? '#F5C97B' : '#E7ECF7',
+                  boxShadow: `0 0 ${i === 1 ? 14 : 10}px ${i === 1 ? 'rgba(245,201,123,0.9)' : 'rgba(231,236,247,0.8)'}`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+            </span>
+          </div>
+        ))}
+
+        {/* The crescent at the centre */}
+        <motion.div
+          className="relative grid place-items-center"
+          style={{ transform: 'translateZ(60px)', transformStyle: 'preserve-3d' }}
+          animate={reduce ? undefined : { y: [0, -10, 0] }}
+          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <div
+            className="relative grid place-items-center rounded-full"
+            style={{
+              width: 'clamp(7rem, 13vw, 10.5rem)',
+              height: 'clamp(7rem, 13vw, 10.5rem)',
+              background:
+                'radial-gradient(circle at 32% 28%, #2a2350 0%, #131a38 45%, #070b18 100%)',
+              boxShadow:
+                'inset -14px -10px 34px rgba(0,0,0,0.85), inset 8px 6px 22px rgba(109,92,240,0.16), 0 0 70px -10px rgba(109,92,240,0.45)',
+            }}
+          >
+            {/* Lit crescent */}
+            <div
+              className="absolute rounded-full"
+              style={{
+                width: '78%',
+                height: '78%',
+                background:
+                  'radial-gradient(circle at 34% 30%, #FFE7BC 0%, #F5C97B 38%, #D99F4A 100%)',
+                boxShadow: '0 0 44px rgba(245,201,123,0.55), inset -8px -6px 18px rgba(0,0,0,0.35)',
+                clipPath:
+                  'ellipse(100% 100% at 100% 100%)',
+                WebkitMaskImage:
+                  'radial-gradient(circle at 84% 82%, transparent 58%, #000 58.5%)',
+                maskImage:
+                  'radial-gradient(circle at 84% 82%, transparent 58%, #000 58.5%)',
+              }}
+            />
+            {/* Terminator highlight */}
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                boxShadow: 'inset 6px 4px 16px rgba(255,255,255,0.14)',
+              }}
+            />
+          </div>
+        </motion.div>
+      </motion.div>
+    </div>
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Copy
+ * ------------------------------------------------------------------ */
+
+const STATS: Array<{ value: string; label: string }> = [
+  { value: '90s', label: 'narrations' },
+  { value: '0', label: 'network in the field' },
+  { value: '$0', label: 'to run' },
+];
 
 const RITUAL = [
   {
@@ -60,6 +202,35 @@ const FEATURES = [
   },
 ];
 
+/** Scroll cue: a hairline that grows, then a dot that travels down it. */
+function ScrollCue({ onClick }: { onClick: () => void }) {
+  const reduce = useReducedMotion();
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Scroll to see how it works"
+      className="group absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2"
+    >
+      <span className="eyebrow !text-[0.55rem] !tracking-[0.3em] opacity-60 transition-opacity group-hover:opacity-100">
+        scroll
+      </span>
+      <span className="relative block h-12 w-px overflow-hidden bg-white/12">
+        {!reduce && (
+          <motion.span
+            className="absolute inset-x-0 top-0 block h-4 bg-gradient-to-b from-transparent via-amber-300 to-transparent"
+            animate={{ y: [-16, 48] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        )}
+      </span>
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Page
+ * ------------------------------------------------------------------ */
+
 export function HomePage({
   onPrepare,
   lat,
@@ -70,212 +241,197 @@ export function HomePage({
   lon: number | null;
 }) {
   const reduce = useReducedMotion();
-  const scrollToRitual = () => {
-    document
-      .getElementById('ritual')
-      ?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-  };
+  const heroRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
+  const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '18%']);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
+
+  const scrollTo = (id: string) => () =>
+    document.getElementById(id)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
 
   return (
     <div className="w-full">
       {/* ————— HERO ————— */}
-      <section className="relative flex min-h-[92dvh] flex-col items-center justify-center text-center px-4 pt-10 pb-16">
-        <Constellation className="constellation-wrap pointer-events-none absolute right-[-6rem] top-1/2 hidden w-[26rem] -translate-y-1/2 opacity-60 md:block lg:right-[4%] lg:w-[30rem]" />
-        <Constellation className="constellation-wrap pointer-events-none absolute left-1/2 top-6 w-64 -translate-x-1/2 opacity-30 md:hidden" />
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.15 }}
-          className="mb-5 sm:mb-7 text-[11px] sm:text-xs uppercase tracking-[0.4em] text-amber-300/80"
-        >
-          screenless astronomy · an audio field guide
-        </motion.p>
-
-        <h1 className="font-display font-bold text-white/95 leading-[0.95] tracking-tight text-[clamp(3rem,11vw,7.5rem)]">
-          <RevealLine delay={0.25}>tonight&rsquo;s sky,</RevealLine>
-          <RevealLine delay={0.38}>
-            <span className="text-amber-300">whispered.</span>
-          </RevealLine>
-        </h1>
-
-        <motion.p
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: EASE, delay: 0.65 }}
-          className="mt-5 sm:mt-6 max-w-md text-base sm:text-lg leading-relaxed text-white/50"
-        >
-          put the phone down. let the sky speak.
-        </motion.p>
+      <section
+        id="home"
+        ref={heroRef}
+        className="relative flex min-h-[100svh] flex-col justify-center overflow-hidden pb-16 pt-28 sm:pt-32"
+      >
+        <Constellation className="pointer-events-none absolute -right-24 top-1/2 hidden w-[30rem] -translate-y-1/2 opacity-40 md:block lg:right-[2%] lg:w-[34rem]" />
+        <Constellation className="pointer-events-none absolute left-1/2 top-10 w-56 -translate-x-1/2 opacity-20 md:hidden" />
 
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: EASE, delay: 0.8 }}
-          className="mt-8 sm:mt-10 flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-3"
+          className="shell relative z-10"
+          style={reduce ? undefined : { y: heroY, opacity: heroOpacity }}
         >
-          <motion.button
-            onClick={onPrepare}
-            className="px-9 py-4 rounded-2xl bg-amber-500 text-black font-semibold text-base sm:text-lg shadow-lg shadow-amber-500/20"
-            whileHover={{ scale: 1.03, boxShadow: '0 0 44px rgba(245,201,123,0.35)' }}
-            whileTap={{ scale: 0.97 }}
-          >
-            prepare my sky
-          </motion.button>
-          <button
-            onClick={scrollToRitual}
-            className="px-9 py-4 rounded-2xl border border-white/15 text-white/70 text-base sm:text-lg hover:border-amber-400/40 hover:text-amber-300 transition-colors"
-          >
-            see how it works
-          </button>
+          <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-6">
+            {/* — copy column — */}
+            <div className="text-center lg:text-left">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, ease: EASE, delay: 0.1 }}
+                className="mb-6 flex justify-center lg:justify-start"
+              >
+                <span className="eyebrow inline-flex items-center gap-2.5 rounded-full border border-amber-300/20 bg-amber-300/[0.06] px-4 py-2">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="pulse-ring absolute inline-flex h-full w-full rounded-full bg-amber-300" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-300" />
+                  </span>
+                  screenless astronomy · an audio field guide
+                </span>
+              </motion.div>
+
+              <h1 className="h-display text-white/95" style={{ fontSize: 'var(--fs-hero)' }}>
+                <SplitText text="tonight’s sky," delay={0.22} as="span" />
+                <SplitText
+                  text="whispered."
+                  delay={0.42}
+                  as="span"
+                  className="bg-gradient-to-br from-[#FFE9C4] via-amber-300 to-amber-deep bg-clip-text text-transparent text-glow"
+                />
+              </h1>
+
+              <motion.p
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.9, ease: EASE, delay: 0.72 }}
+                className="lead mx-auto mt-6 max-w-md lg:mx-0"
+              >
+                put the phone down. let the sky speak.
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.9, ease: EASE, delay: 0.86 }}
+                className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-center lg:justify-start"
+              >
+                <button onClick={onPrepare} className="btn btn-primary">
+                  prepare my sky
+                </button>
+                <button onClick={scrollTo('ritual')} className="btn btn-ghost">
+                  see how it works
+                </button>
+              </motion.div>
+
+              {/* Stats row */}
+              <motion.dl
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 1, delay: 1.05 }}
+                className="mt-11 flex flex-wrap items-center justify-center gap-x-8 gap-y-4 lg:justify-start"
+              >
+                {STATS.map((s, i) => (
+                  <div key={s.label} className="flex items-baseline gap-2">
+                    <dt className="num text-xl font-semibold text-amber-300 sm:text-2xl">{s.value}</dt>
+                    <dd className="font-mono text-[0.6rem] uppercase tracking-[0.22em] text-white/45">
+                      {s.label}
+                    </dd>
+                    {i < STATS.length - 1 && (
+                      <span className="ml-4 hidden text-amber-400/40 sm:inline" aria-hidden="true">
+                        ✦
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </motion.dl>
+            </div>
+
+            {/* — 3D scope column — */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 1.4, ease: EASE, delay: 0.35 }}
+              className="flex justify-center lg:justify-end"
+            >
+              <OrbitScope />
+            </motion.div>
+          </div>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 1.1 }}
-          className="mt-10 sm:mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-[11px] sm:text-xs uppercase tracking-[0.25em] text-white/35"
-        >
-          <span>90-second narrations</span>
-          <span className="text-amber-400/50">✦</span>
-          <span>0 network in the field</span>
-          <span className="text-amber-400/50">✦</span>
-          <span>$0 to run</span>
-        </motion.div>
-
-        <motion.button
-          onClick={scrollToRitual}
-          aria-label="Scroll to how it works"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.4, duration: 1 }}
-          className="absolute bottom-5 left-1/2 -translate-x-1/2 text-white/30 hover:text-white/60 transition-colors"
-        >
-          <motion.span
-            className="block text-xl"
-            animate={reduce ? undefined : { y: [0, 8, 0] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            aria-hidden="true"
-          >
-            ↓
-          </motion.span>
-        </motion.button>
+        <ScrollCue onClick={scrollTo('ritual')} />
       </section>
 
       <Marquee />
 
       {/* ————— LIVE STRIP ————— */}
-      <section className="px-4 pt-12 sm:pt-16">
-        <TonightStrip lat={lat} lon={lon} />
+      <section className="section !py-14 sm:!py-16">
+        <div className="shell">
+          <TonightStrip lat={lat} lon={lon} />
+        </div>
       </section>
 
       {/* ————— RITUAL ————— */}
-      <section id="ritual" className="px-4 pt-16 sm:pt-24 pb-4 scroll-mt-20">
-        <div className="max-w-4xl mx-auto">
-          <motion.p
-            initial={{ opacity: 0, y: 14 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.6, ease: EASE }}
-            className="text-[11px] sm:text-xs uppercase tracking-[0.4em] text-amber-300/80 mb-3"
-          >
-            the ritual
-          </motion.p>
-          <motion.h2
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.7, ease: EASE, delay: 0.08 }}
-            className="font-display text-3xl sm:text-5xl font-bold text-white/90 leading-tight mb-8 sm:mb-12"
-          >
-            three steps.
-            <br />
-            <span className="text-white/40">then no screen at all.</span>
-          </motion.h2>
+      <section id="ritual" className="section">
+        <div className="shell">
+          <div className="max-w-3xl">
+            <Eyebrow>the ritual</Eyebrow>
+            <h2 className="h-section mt-5 text-white/92">
+              <SplitText text="three steps." as="span" />
+              <br />
+              <span className="text-white/38">
+                <SplitText text="then no screen at all." as="span" delay={0.12} />
+              </span>
+            </h2>
+          </div>
 
-          <div className="grid gap-4 sm:gap-5 md:grid-cols-3">
+          <div className="mt-12 grid gap-4 sm:gap-5 md:grid-cols-3">
             {RITUAL.map((r, i) => (
-              <motion.article
-                key={r.n}
-                initial={{ opacity: 0, y: 26 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 0.7, ease: EASE, delay: i * 0.12 }}
-                whileHover={{ y: -4 }}
-                className="group rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-6 sm:p-7 hover:border-amber-400/25 transition-colors"
-              >
-                <p className="font-display text-amber-400/70 text-sm tracking-[0.3em] mb-4">{r.n}</p>
-                <h3 className="font-display text-xl sm:text-2xl text-white/90 mb-3">{r.title}</h3>
-                <p className="text-white/50 text-sm leading-relaxed">{r.copy}</p>
-              </motion.article>
+              <Reveal key={r.n} delay={i * 0.12} className="group panel panel-hover p-6 sm:p-7">
+                <div className="mb-5 flex items-center justify-between">
+                  <span className="num text-sm tracking-[0.3em] text-amber-300/80">{r.n}</span>
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-amber-300/50 transition-all duration-500 group-hover:scale-150 group-hover:bg-amber-300"
+                    aria-hidden="true"
+                  />
+                </div>
+                <h3 className="h-display mb-3 text-xl text-white/92 sm:text-2xl">{r.title}</h3>
+                <p className="copy text-sm">{r.copy}</p>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
       {/* ————— FEATURES ————— */}
-      <section className="px-4 pt-14 sm:pt-20 pb-4">
-        <div className="max-w-4xl mx-auto grid gap-4 sm:gap-5 sm:grid-cols-3">
-          {FEATURES.map((f, i) => (
-            <motion.div
-              key={f.n}
-              initial={{ opacity: 0, y: 26 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.7, ease: EASE, delay: i * 0.12 }}
-              whileHover={{ y: -4, borderColor: 'rgba(245,201,123,0.25)' }}
-              className="rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.05] to-transparent p-6 sm:p-7 backdrop-blur-sm transition-colors"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <span className="text-2xl sm:text-3xl" aria-hidden="true">{f.icon}</span>
-                <span className="font-display text-white/25 text-sm tracking-[0.3em]">{f.n}</span>
-              </div>
-              <h3 className="text-white/85 font-medium mb-2">{f.title}</h3>
-              <p className="text-white/45 text-sm leading-relaxed">{f.copy}</p>
-            </motion.div>
-          ))}
+      <section className="section">
+        <div className="shell">
+          <div className="grid gap-4 sm:gap-5 md:grid-cols-3">
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.n} delay={i * 0.12} className="panel panel-hover overflow-hidden p-6 sm:p-7">
+                <div className="mb-5 flex items-start justify-between">
+                  <span className="text-2xl sm:text-3xl" aria-hidden="true">
+                    {f.icon}
+                  </span>
+                  <span className="num text-sm tracking-[0.3em] text-white/22">{f.n}</span>
+                </div>
+                <h3 className="mb-2 text-lg font-semibold text-white/88">{f.title}</h3>
+                <p className="copy text-sm">{f.copy}</p>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ————— MANIFESTO + CTA ————— */}
-      <section className="px-4 pt-16 sm:pt-24 pb-20 sm:pb-28">
-        <div className="max-w-2xl mx-auto text-center">
-          <motion.blockquote
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.8, ease: EASE }}
-            className="font-display text-xl sm:text-3xl leading-snug text-white/75"
-          >
-            &ldquo;your eyes need twenty minutes of darkness.
-            <span className="text-amber-300"> one glance at a bright screen resets them.</span>
-            &rdquo;
-          </motion.blockquote>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8, delay: 0.15 }}
-            className="mt-4 text-white/40 text-sm"
-          >
-            so the screen was designed out of the experience.
-          </motion.p>
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.7, ease: EASE, delay: 0.2 }}
-            className="mt-8"
-          >
-            <motion.button
-              onClick={onPrepare}
-              className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-amber-500 text-black font-semibold text-lg shadow-lg shadow-amber-500/20"
-              whileHover={{ scale: 1.03, boxShadow: '0 0 44px rgba(245,201,123,0.35)' }}
-              whileTap={{ scale: 0.97 }}
-            >
+      <section className="section">
+        <div className="shell">
+          <Reveal className="mx-auto max-w-2xl text-center">
+            <div className="rule-shimmer mx-auto mb-10 w-full max-w-xs" />
+            <blockquote className="h-display text-white/78" style={{ fontSize: 'var(--fs-h3)' }}>
+              &ldquo;your eyes need twenty minutes of darkness.
+              <span className="bg-gradient-to-br from-[#FFE9C4] to-amber-300 bg-clip-text text-transparent">
+                {' '}
+                one glance at a bright screen resets them.
+              </span>
+              &rdquo;
+            </blockquote>
+            <p className="copy mt-5 text-sm">so the screen was designed out of the experience.</p>
+            <button onClick={onPrepare} className="btn btn-primary mt-9">
               ready when the sun is down
-            </motion.button>
-          </motion.div>
+            </button>
+          </Reveal>
         </div>
       </section>
     </div>

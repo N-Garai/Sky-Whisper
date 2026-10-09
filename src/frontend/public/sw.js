@@ -5,7 +5,7 @@ with the cached shell as fallback (so the app still loads on a cold start);
 for pack audio/transcript, stale-while-revalidate so a downloaded pack
 plays with no network at all.
 */
-const SHELL_CACHE = 'skywhisper-shell-v1';
+const SHELL_CACHE = 'skywhisper-shell-v2';
 const PACK_CACHE = 'skywhisper-packs-v1';
 
 const SHELL_ASSETS = [
@@ -13,6 +13,11 @@ const SHELL_ASSETS = [
   '/index.html',
   '/manifest.webmanifest',
   '/icon.svg',
+  '/favicon.ico',
+  '/favicon-32.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (event) => {
