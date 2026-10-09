@@ -61,14 +61,13 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
   const activeStage = PREPARE_STAGES.indexOf(stage);
 
   return (
-    <div className="panel w-full p-6 sm:p-8 lg:p-10">
-      {/* Header */}
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0">
-          <p className="eyebrow mb-3">Step One · At Home, Screen On</p>
-          <h2 className="h-display text-2xl text-white/92 sm:text-3xl">Prepare Your Sky</h2>
-        </div>
-        <p className="font-mono text-[0.58rem] uppercase tracking-[0.2em] text-white/35">
+    <div className="w-full max-w-lg mx-auto min-w-0">
+      <div className="panel min-w-0 overflow-hidden p-8 sm:p-10">
+      {/* Header — centred stack */}
+      <div className="mb-9 text-center">
+        <p className="eyebrow mb-3">Step One · At Home, Screen On</p>
+        <h2 className="h-display text-2xl text-white/92 sm:text-3xl">Prepare Your Sky</h2>
+        <p className="mt-3 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-white/35">
           {DURATION_WORDS[duration] ?? `${duration} Seconds`} · Cached Before You Leave
         </p>
       </div>
@@ -114,7 +113,7 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
 
       {/* Duration — segmented control with a sliding indicator */}
       <div className="mt-8">
-        <span className="field-label">Narration Length</span>
+        <span className="field-label text-center">Narration Length</span>
         <div
           className="relative grid grid-cols-3 gap-1.5 rounded-xl border border-white/10 bg-black/40 p-1.5"
           role="group"
@@ -152,12 +151,13 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
           })}
         </div>
       </div>
+      </div>
 
-      {/* Submit */}
+      {/* Submit — deliberately outside the panel: one job, one control. */}
       <motion.button
         onClick={handleSubmit}
         disabled={loading || !valid}
-        className="btn btn-primary mt-9 w-full"
+        className="btn btn-primary mt-5 w-full"
         whileHover={{ scale: loading || !valid ? 1 : 1.02 }}
         whileTap={{ scale: loading || !valid ? 1 : 0.98 }}
       >
@@ -169,7 +169,7 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="mt-6 space-y-2.5 overflow-hidden"
+          className="panel mt-5 space-y-2.5 overflow-hidden p-5 sm:p-6"
           aria-live="polite"
         >
           {PREPARE_STAGES.map((s, i) => {

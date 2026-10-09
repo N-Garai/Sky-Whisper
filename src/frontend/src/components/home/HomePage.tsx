@@ -9,29 +9,35 @@ import {
 } from 'framer-motion';
 import { Constellation, Eyebrow, Reveal, SplitText, GradientReveal } from './Constellation';
 import { TonightStrip } from './TonightStrip';
-import type { Variants } from 'framer-motion';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-/* Staged row reveal: the row fades up as one wave, cards following in
-   sequence with a blur-to-sharp settle. Ritual row first, features row
-   second — scroll choreography, not pop-in. */
-const rowVariants: Variants = {
-  hidden: {},
-  show: (stagger: number = 0.14) => ({
-    transition: { staggerChildren: stagger, delayChildren: 0.1 },
-  }),
-};
-
-const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 38, filter: 'blur(8px)' },
-  show: {
-    opacity: 1,
-    y: 0,
-    filter: 'blur(0px)',
-    transition: { duration: 0.9, ease: EASE },
-  },
-};
+/* Row entrance: each card reveals on its own scroll trigger with a
+   staggered delay — no variant propagation, so a stalled parent can
+   never swallow the animation. */
+function RowCard({
+  index,
+  className = '',
+  children,
+}: {
+  index: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.article
+      initial={reduce ? { opacity: 1, y: 0 } : { opacity: 0, y: 38, filter: 'blur(8px)' }}
+      whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      viewport={{ once: true, margin: '-10% 0px' }}
+      transition={{ duration: 0.9, ease: EASE, delay: reduce ? 0 : index * 0.14 }}
+      whileHover={{ y: -5 }}
+      className={`group panel min-w-0 overflow-hidden p-8 sm:p-9 ${className}`}
+    >
+      {children}
+    </motion.article>
+  );
+}
 
 /* ------------------------------------------------------------------ *
  * Hero art — a crescent moon on a tilted orbital plane.
@@ -394,21 +400,9 @@ export function HomePage({
             </h2>
           </div>
 
-          <motion.div
-            variants={rowVariants}
-            initial={reduce ? 'show' : 'hidden'}
-            whileInView="show"
-            viewport={{ once: true, margin: '-12% 0px' }}
-            custom={0.16}
-            className="mt-12 grid gap-5 sm:gap-6 md:grid-cols-3"
-          >
-            {RITUAL.map((r) => (
-              <motion.article
-                key={r.n}
-                variants={cardVariants}
-                whileHover={{ y: -5 }}
-                className="group panel p-7 sm:p-8"
-              >
+          <div className="mt-12 grid gap-5 sm:gap-6 md:grid-cols-3">
+            {RITUAL.map((r, i) => (
+              <RowCard key={r.n} index={i}>
                 <div className="mb-6 flex items-center justify-between">
                   <span className="num text-sm tracking-[0.3em] text-amber-300/80">{r.n}</span>
                   <span
@@ -418,30 +412,18 @@ export function HomePage({
                 </div>
                 <h3 className="h-display mb-3.5 text-xl text-white/92 sm:text-2xl">{r.title}</h3>
                 <p className="copy text-sm leading-relaxed">{r.copy}</p>
-              </motion.article>
+              </RowCard>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* ————— FEATURES ————— */}
       <section className="section">
         <div className="shell">
-          <motion.div
-            variants={rowVariants}
-            initial={reduce ? 'show' : 'hidden'}
-            whileInView="show"
-            viewport={{ once: true, margin: '-12% 0px' }}
-            custom={0.18}
-            className="grid gap-5 sm:gap-6 md:grid-cols-3"
-          >
-            {FEATURES.map((f) => (
-              <motion.div
-                key={f.n}
-                variants={cardVariants}
-                whileHover={{ y: -5 }}
-                className="panel p-7 transition-colors hover:border-amber-300/25 sm:p-8"
-              >
+          <div className="grid gap-5 sm:gap-6 md:grid-cols-3">
+            {FEATURES.map((f, i) => (
+              <RowCard key={f.n} index={i}>
                 <div className="mb-6 flex items-start justify-between">
                   <span className="text-2xl sm:text-3xl" aria-hidden="true">
                     {f.icon}
@@ -450,9 +432,9 @@ export function HomePage({
                 </div>
                 <h3 className="mb-2.5 text-lg font-semibold text-white/90">{f.title}</h3>
                 <p className="copy text-sm leading-relaxed">{f.copy}</p>
-              </motion.div>
+              </RowCard>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 

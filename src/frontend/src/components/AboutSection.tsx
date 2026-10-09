@@ -50,7 +50,13 @@ const PROOF: Array<{ value: string; label: string }> = [
 
 function PrincipleCard({ n, title, copy, cta = false }: { n: string; title: string; copy: string; cta?: boolean }) {
   return (
-    <article className="panel flex h-[58vh] max-h-[30rem] min-h-[24rem] w-[80vw] shrink-0 flex-col p-7 sm:w-[26rem] sm:p-9">
+    <motion.article
+      initial={{ opacity: 0, y: 34, filter: 'blur(8px)' }}
+      whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      viewport={{ once: true, margin: '-10% 0px' }}
+      transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
+      className="panel flex h-full min-h-[22rem] w-[80vw] shrink-0 flex-col p-7 sm:w-[26rem] sm:p-9"
+    >
       <div className="mb-5 flex items-center gap-4">
         <span className="num text-sm tracking-[0.3em] text-amber-300/80">{n}</span>
         <span className="h-px flex-1 bg-gradient-to-r from-amber-300/25 to-transparent" />
@@ -64,14 +70,14 @@ function PrincipleCard({ n, title, copy, cta = false }: { n: string; title: stri
             e.preventDefault();
             document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth' });
           }}
-          className="btn btn-ghost mt-auto w-fit !px-5 !py-2.5 !text-sm"
+          className="btn btn-ghost mt-8 w-fit !px-5 !py-2.5 !text-sm"
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
         >
           Try It Tonight
         </motion.a>
       )}
-    </article>
+    </motion.article>
   );
 }
 
@@ -165,11 +171,11 @@ export function AboutSection() {
 
           <div
             ref={trackRef}
-            className="flex w-max gap-5 pr-[12vw] sm:gap-7"
-            style={{ paddingLeft: 'max(1.15rem, calc((100vw - 73.75rem) / 2 + 1.15rem))' }}
+            className="flex w-max items-stretch gap-5 pr-[12vw] sm:gap-7"
+            style={{ paddingLeft: 'max(2rem, calc((100vw - 73.75rem) / 2 + 2rem))' }}
           >
             {CARDS.map((c) => (
-              <motion.div key={c.n} style={{ x }}>
+              <motion.div key={c.n} style={{ x }} className="flex">
                 <PrincipleCard n={c.n} title={c.title} copy={c.copy} cta={c.cta} />
               </motion.div>
             ))}
@@ -181,8 +187,8 @@ export function AboutSection() {
             </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-[#04060f] to-transparent sm:w-28" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#04060f] to-transparent sm:w-28" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#04060f] via-[#04060f]/70 to-transparent sm:w-40" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#04060f] via-[#04060f]/70 to-transparent sm:w-40" />
         </div>
       </div>
 
