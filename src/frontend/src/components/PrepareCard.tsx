@@ -10,24 +10,24 @@ interface PrepareCardProps {
 }
 
 export const PREPARE_STAGES = [
-  'reading the stars',
-  'tracing constellations',
-  'writing the guide',
-  'recording the voice',
-  'sealing the pack',
+  'Reading the Stars',
+  'Tracing Constellations',
+  'Writing the Guide',
+  'Recording the Voice',
+  'Sealing the Pack',
 ];
 
 const DURATIONS = [
-  { value: 60, label: '60s', hint: 'a quick pass' },
-  { value: 90, label: '90s', hint: 'the standard tour' },
-  { value: 120, label: '120s', hint: 'the long look' },
+  { value: 60, label: '60s', hint: 'A Quick Pass' },
+  { value: 90, label: '90s', hint: 'The Standard Tour' },
+  { value: 120, label: '120s', hint: 'The Long Look' },
 ];
 
 /** How long the narration will run, in words. */
 const DURATION_WORDS: Record<number, string> = {
-  60: 'sixty seconds',
-  90: 'ninety seconds',
-  120: 'two minutes',
+  60: 'Sixty Seconds',
+  90: 'Ninety Seconds',
+  120: 'Two Minutes',
 };
 
 export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon }: PrepareCardProps) {
@@ -63,13 +63,13 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
   return (
     <div className="panel w-full p-6 sm:p-8 lg:p-10">
       {/* Header */}
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="eyebrow mb-2">step one · at home, screen on</p>
-          <h2 className="h-display text-2xl text-white/92 sm:text-3xl">prepare your sky</h2>
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <p className="eyebrow mb-3">Step One · At Home, Screen On</p>
+          <h2 className="h-display text-2xl text-white/92 sm:text-3xl">Prepare Your Sky</h2>
         </div>
         <p className="font-mono text-[0.58rem] uppercase tracking-[0.2em] text-white/35">
-          {DURATION_WORDS[duration] ?? `${duration} seconds`} · cached before you leave
+          {DURATION_WORDS[duration] ?? `${duration} Seconds`} · Cached Before You Leave
         </p>
       </div>
 
@@ -108,15 +108,15 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
           />
         </label>
       </div>
-      <p id="lat-help" className="mt-2 font-mono text-[0.6rem] text-white/28">
-        decimal degrees · −90 to 90
+      <p id="lat-help" className="mt-2.5 font-mono text-[0.6rem] text-white/28">
+        Decimal Degrees · −90 to 90
       </p>
 
       {/* Duration — segmented control with a sliding indicator */}
-      <div className="mt-7">
-        <span className="field-label">narration length</span>
+      <div className="mt-8">
+        <span className="field-label">Narration Length</span>
         <div
-          className="relative grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/40 p-1"
+          className="relative grid grid-cols-3 gap-1.5 rounded-xl border border-white/10 bg-black/40 p-1.5"
           role="group"
           aria-label="Narration length"
         >
@@ -128,7 +128,7 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
                 type="button"
                 onClick={() => setDuration(d.value)}
                 aria-pressed={active}
-                className="relative z-10 rounded-lg px-2 py-2.5 text-center transition-colors"
+                className="relative z-10 min-h-[4.4rem] rounded-lg px-2 py-2.5 text-center transition-colors"
               >
                 {active && (
                   <motion.span
@@ -157,11 +157,11 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
       <motion.button
         onClick={handleSubmit}
         disabled={loading || !valid}
-        className="btn btn-primary mt-7 w-full"
+        className="btn btn-primary mt-8 w-full"
         whileHover={{ scale: loading || !valid ? 1 : 1.02 }}
         whileTap={{ scale: loading || !valid ? 1 : 0.98 }}
       >
-        {loading ? 'preparing…' : valid ? 'prepare my sky' : 'enter a valid location'}
+        {loading ? 'Preparing…' : valid ? 'Prepare My Sky' : 'Enter a Valid Location'}
       </motion.button>
 
       {/* Staged prepare ritual — advances with the real request lifecycle */}

@@ -125,6 +125,7 @@ body {
   color: rgb(231 236 247 / 0.56);
   line-height: 1.72;
   text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 
 /* Numeric / tabular contexts. */
@@ -209,8 +210,10 @@ a { text-decoration: none; }
 .hairline { border-top: 1px solid rgb(231 236 247 / 0.08); }
 
 /* --- glow helpers ---------------------------------------------------- */
-.glow-amber { box-shadow: 0 0 42px -6px rgb(245 201 123 / 0.42); }
-.text-glow { text-shadow: 0 0 26px rgb(245 201 123 / 0.4); }
+/* Crisp outer glow for gradient display text. (Never text-shadow: on
+   transparent-clipped text it bleeds *through* the glyphs as a blurry
+   smear. drop-shadow follows the glyph alpha, so type stays sharp.) */
+.text-glow { filter: drop-shadow(0 0 18px rgb(245 201 123 / 0.35)); }
 
 /* Animated conic ring used behind the hero CTA and the play button. */
 @keyframes spin-slow { to { transform: rotate(360deg); } }
@@ -331,13 +334,28 @@ a { text-decoration: none; }
 }
 .pulse-ring { animation: pulse-ring 2.6s cubic-bezier(0.25, 0.6, 0.35, 1) infinite; }
 
-/* Marquee. The track holds two identical rows and slides exactly one
-   row width per loop for a seamless cycle. */
-@keyframes marquee-slide {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-50%, 0, 0); }
+/* --- reduced motion -------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  .nebula-a, .nebula-b, .nebula-c,
+  .ring-spin, .ring-spin-fast,
+  .pulse-ring, .rule-shimmer,
+  .orbit-carrier {
+    animation: none !important;
+  }
+
+  .constellation-line { animation: none !important; stroke-dashoffset: 0 !important; }
+  .constellation-star { animation: none !important; opacity: 1 !important; }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
-.marquee-track { animation: marquee-slide 42s linear infinite; will-change: transform; }
 
 /* Constellation draw-in: lines sweep via dashoffset, stars fade up. */
 .constellation-line {
@@ -368,10 +386,14 @@ a { text-decoration: none; }
   animation: rule-shimmer 7s linear infinite;
 }
 
-/* Orbiting body on the 3D scope. */
-@keyframes orbit {
-  from { transform: rotate(0deg) translateX(var(--orbit-r)) rotate(0deg); }
-  to { transform: rotate(360deg) translateX(var(--orbit-r)) rotate(-360deg); }
+/* Orbit carriers on the hero scope. The carrier spins; its dot rides at
+   the ring edge so the motion is visible. (Spinning a uniform ring is
+   invisible — the dot is the motion.) */
+@keyframes orbit-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes orbit-spin-rev {
+  to { transform: rotate(-360deg); }
 }
 
 /* Equalizer bars for the player. */
@@ -381,31 +403,10 @@ a { text-decoration: none; }
 }
 
 /* --- text reveal masks ----------------------------------------------- */
-/* Parent clips, child slides up. Pure CSS so it survives hydration. */
-.reveal-mask { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; }
-.reveal-inner { display: block; }
-
-/* --- reduced motion -------------------------------------------------- */
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-
-  .nebula-a, .nebula-b, .nebula-c,
-  .marquee-track, .ring-spin, .ring-spin-fast,
-  .pulse-ring, .rule-shimmer {
-    animation: none !important;
-  }
-
-  .constellation-line { animation: none !important; stroke-dashoffset: 0 !important; }
-  .constellation-star { animation: none !important; opacity: 1 !important; }
-
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-  }
-}
+/* Parent clips, child slides up. inline-block keeps words flowing inline
+   (block would stack every word on its own line). Pure CSS. */
+.reveal-mask { display: inline-block; overflow: hidden; vertical-align: bottom; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.reveal-inner { display: inline-block; will-change: transform, filter; }
 
 /* --- true night mode (red-shift) ------------------------------------- */
 /* Deep-red monochrome that preserves dark adaptation. Applied to the app

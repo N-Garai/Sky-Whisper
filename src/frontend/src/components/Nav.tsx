@@ -92,13 +92,13 @@ export function Nav({
           </button>
 
           {/* Desktop links */}
-          <div className="hidden items-center gap-1 md:flex">
+          <div className="hidden items-center gap-2 md:flex">
             {SECTIONS.map((s) => (
               <button
                 key={s.id}
                 onClick={() => go(s.id)}
                 aria-current={active === s.id ? 'true' : undefined}
-                className="relative rounded-full px-3.5 py-1.5 font-mono text-[0.62rem] uppercase tracking-[0.2em] transition-colors"
+                className="relative rounded-full px-4 py-2 font-mono text-[0.68rem] uppercase tracking-[0.18em] transition-colors"
               >
                 <span className={active === s.id ? 'text-amber-300' : 'text-white/45 hover:text-white/80'}>
                   {s.label}
@@ -113,7 +113,7 @@ export function Nav({
               </button>
             ))}
 
-            <span className="mx-2 h-4 w-px bg-white/12" aria-hidden="true" />
+            <span className="mx-3 h-4 w-px bg-white/12" aria-hidden="true" />
 
             <button
               onClick={onToggleRedShift}

@@ -7,24 +7,25 @@ import {
   useSpring,
   useTransform,
 } from 'framer-motion';
-import { Marquee } from './Marquee';
 import { Constellation, Eyebrow, Reveal, SplitText } from './Constellation';
 import { TonightStrip } from './TonightStrip';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 /* ------------------------------------------------------------------ *
- * Hero art — an orbiting crescent on a tilted plane.
+ * Hero art — a crescent moon on a tilted orbital plane.
  *
- * Three nested rings rotate on separate axes in real 3D (perspective +
- * preserve-3d), so the figure has depth as the pointer moves. The whole
- * scope tilts toward the cursor via spring-damped motion values.
+ * Three nested rings carry one satellite each. The ring borders are static
+ * (spinning a uniform circle is invisible); each satellite rides a carrier
+ * that rotates, so the dots visibly travel their orbits — two clockwise,
+ * one counter-clockwise. The whole scope tilts toward the cursor via
+ * spring-damped motion values, and the moon breathes on a slow float.
  * ------------------------------------------------------------------ */
 
 const ORBITS = [
-  { size: 'clamp(15rem, 26vw, 24rem)', duration: '26s', tilt: 'rotateX(72deg)', label: '' },
-  { size: 'clamp(19rem, 32vw, 30rem)', duration: '38s', tilt: 'rotateX(66deg) rotateY(12deg)', label: '' },
-  { size: 'clamp(23rem, 38vw, 36rem)', duration: '54s', tilt: 'rotateX(78deg) rotateY(-10deg)', label: '' },
+  { size: 'clamp(15rem, 26vw, 24rem)', duration: '24s', tilt: 'rotateX(72deg)', reverse: false, dot: 5, glow: 'rgba(231,236,247,0.8)' },
+  { size: 'clamp(19rem, 32vw, 30rem)', duration: '36s', tilt: 'rotateX(66deg) rotateY(12deg)', reverse: true, dot: 7, glow: 'rgba(245,201,123,0.9)' },
+  { size: 'clamp(23rem, 38vw, 36rem)', duration: '52s', tilt: 'rotateX(78deg) rotateY(-10deg)', reverse: false, dot: 5, glow: 'rgba(231,236,247,0.8)' },
 ];
 
 function OrbitScope() {
@@ -68,7 +69,8 @@ function OrbitScope() {
         className="relative grid h-full w-full place-items-center"
         style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}
       >
-        {/* Rings */}
+        {/* Rings — static tilted borders, each with a satellite carrier
+            that rotates so the dot visibly travels the orbit. */}
         {ORBITS.map((o, i) => (
           <div
             key={i}
@@ -76,28 +78,29 @@ function OrbitScope() {
             style={{
               width: o.size,
               height: o.size,
-              borderColor: `rgba(245, 201, 123, ${0.16 - i * 0.035})`,
-              transform: `${o.tilt} translateZ(${i * 8}px)`,
+              borderColor: `rgba(245, 201, 123, ${0.22 - i * 0.045})`,
+              transform: `${o.tilt} translateZ(${i * 10}px)`,
               transformStyle: 'preserve-3d',
             }}
           >
-            {/* A satellite riding this ring */}
             <span
-              className="absolute left-1/2 top-1/2 h-full w-full"
+              className="orbit-carrier absolute inset-0"
               style={{
-                transformStyle: 'preserve-3d',
-                animation: reduce ? undefined : `orbit ${o.duration} linear infinite`,
-                ['--orbit-r' as string]: `calc(${o.size} / 2)`,
+                animation: reduce
+                  ? undefined
+                  : `${o.reverse ? 'orbit-spin-rev' : 'orbit-spin'} ${o.duration} linear infinite`,
               }}
             >
               <span
                 className="absolute block rounded-full"
                 style={{
-                  width: i === 1 ? 7 : 5,
-                  height: i === 1 ? 7 : 5,
-                  background: i === 1 ? '#F5C97B' : '#E7ECF7',
-                  boxShadow: `0 0 ${i === 1 ? 14 : 10}px ${i === 1 ? 'rgba(245,201,123,0.9)' : 'rgba(231,236,247,0.8)'}`,
+                  left: '50%',
+                  top: '-3px',
+                  width: o.dot,
+                  height: o.dot,
                   transform: 'translate(-50%, -50%)',
+                  background: i === 1 ? '#F5C97B' : '#E7ECF7',
+                  boxShadow: `0 0 ${i === 1 ? 16 : 10}px ${o.glow}`,
                 }}
               />
             </span>
@@ -158,26 +161,26 @@ function OrbitScope() {
  * ------------------------------------------------------------------ */
 
 const STATS: Array<{ value: string; label: string }> = [
-  { value: '90s', label: 'narrations' },
-  { value: '0', label: 'network in the field' },
-  { value: '$0', label: 'to run' },
+  { value: '90s', label: 'Narrations' },
+  { value: '0', label: 'Network in the field' },
+  { value: '$0', label: 'To run' },
 ];
 
 const RITUAL = [
   {
     n: '01',
-    title: 'prepare',
-    copy: 'at home, screen on. pick a place and a night — the server computes exactly what will be overhead, down to the minute.',
+    title: 'Prepare',
+    copy: 'At home, screen on. Pick a place and a night — the server computes exactly what will be overhead, down to the minute.',
   },
   {
     n: '02',
-    title: 'download',
-    copy: 'take the pack with you. narration plus transcript, cached on the phone before you leave wifi behind.',
+    title: 'Download',
+    copy: 'Take the pack with you. Narration plus transcript, cached on the phone before you leave wifi behind.',
   },
   {
     n: '03',
-    title: 'listen',
-    copy: 'outside, screen off. earbuds in, phone face-down. lock-screen controls handle pause and rewind.',
+    title: 'Listen',
+    copy: 'Outside, screen off. Earbuds in, phone face-down. Lock-screen controls handle pause and rewind.',
   },
 ];
 
@@ -185,20 +188,20 @@ const FEATURES = [
   {
     n: '01',
     icon: '📵',
-    title: 'screen off',
-    copy: 'the interface retires after one tap. no glowing rectangle between you and the oldest show there is.',
+    title: 'Screen Off',
+    copy: 'The interface retires after one tap. No glowing rectangle between you and the oldest show there is.',
   },
   {
     n: '02',
     icon: '📡',
-    title: 'works offline',
-    copy: 'dark sites have no bars by definition. every pack plays from local cache — airplane mode included.',
+    title: 'Works Offline',
+    copy: 'Dark sites have no bars by definition. Every pack plays from local cache — airplane mode included.',
   },
   {
     n: '03',
     icon: '🔭',
-    title: 'open source',
-    copy: 'open ephemeris you can check, open weights you can swap, a stack you can self-host. nothing to trust blindly.',
+    title: 'Open Source',
+    copy: 'Open ephemeris you can check, open weights you can swap, a stack you can self-host. Nothing to trust blindly.',
   },
 ];
 
@@ -283,9 +286,9 @@ export function HomePage({
               </motion.div>
 
               <h1 className="h-display text-white/95" style={{ fontSize: 'var(--fs-hero)' }}>
-                <SplitText text="tonight’s sky," delay={0.22} as="span" />
+                <SplitText text="Tonight’s Sky," delay={0.22} as="span" />
                 <SplitText
-                  text="whispered."
+                  text="Whispered."
                   delay={0.42}
                   as="span"
                   className="bg-gradient-to-br from-[#FFE9C4] via-amber-300 to-amber-deep bg-clip-text text-transparent text-glow"
@@ -298,7 +301,7 @@ export function HomePage({
                 transition={{ duration: 0.9, ease: EASE, delay: 0.72 }}
                 className="lead mx-auto mt-6 max-w-md lg:mx-0"
               >
-                put the phone down. let the sky speak.
+                Put the phone down. Let the sky speak.
               </motion.p>
 
               <motion.div
@@ -308,10 +311,10 @@ export function HomePage({
                 className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-center lg:justify-start"
               >
                 <button onClick={onPrepare} className="btn btn-primary">
-                  prepare my sky
+                  Prepare My Sky
                 </button>
                 <button onClick={scrollTo('ritual')} className="btn btn-ghost">
-                  see how it works
+                  See How It Works
                 </button>
               </motion.div>
 
@@ -353,8 +356,6 @@ export function HomePage({
         <ScrollCue onClick={scrollTo('ritual')} />
       </section>
 
-      <Marquee />
-
       {/* ————— LIVE STRIP ————— */}
       <section className="section !py-14 sm:!py-16">
         <div className="shell">
@@ -366,12 +367,12 @@ export function HomePage({
       <section id="ritual" className="section">
         <div className="shell">
           <div className="max-w-3xl">
-            <Eyebrow>the ritual</Eyebrow>
+            <Eyebrow>The Ritual</Eyebrow>
             <h2 className="h-section mt-5 text-white/92">
-              <SplitText text="three steps." as="span" />
+              <SplitText text="Three Steps." as="span" />
               <br />
               <span className="text-white/38">
-                <SplitText text="then no screen at all." as="span" delay={0.12} />
+                <SplitText text="Then No Screen At All." as="span" delay={0.12} />
               </span>
             </h2>
           </div>
@@ -420,16 +421,16 @@ export function HomePage({
           <Reveal className="mx-auto max-w-2xl text-center">
             <div className="rule-shimmer mx-auto mb-10 w-full max-w-xs" />
             <blockquote className="h-display text-white/78" style={{ fontSize: 'var(--fs-h3)' }}>
-              &ldquo;your eyes need twenty minutes of darkness.
+              &ldquo;Your eyes need twenty minutes of darkness.
               <span className="bg-gradient-to-br from-[#FFE9C4] to-amber-300 bg-clip-text text-transparent">
                 {' '}
-                one glance at a bright screen resets them.
+                One glance at a bright screen resets them.
               </span>
               &rdquo;
             </blockquote>
-            <p className="copy mt-5 text-sm">so the screen was designed out of the experience.</p>
+            <p className="copy mt-5 text-sm">So the screen was designed out of the experience.</p>
             <button onClick={onPrepare} className="btn btn-primary mt-9">
-              ready when the sun is down
+              Ready When the Sun Is Down
             </button>
           </Reveal>
         </div>

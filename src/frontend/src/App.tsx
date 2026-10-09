@@ -78,7 +78,7 @@ export default function App() {
     } catch {
       if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
       setStage('');
-      setError('the telescope is waking up — free servers nap, give it about a minute, then try again');
+      setError('The telescope is waking up — free servers nap. Give it about a minute, then try again');
       window.setTimeout(() => setError(null), 8000);
     } finally {
       setLoading(false);
@@ -134,17 +134,19 @@ export default function App() {
             <div className="shell">
               <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-start lg:gap-14">
                 {/* Form column */}
-                <div>
-                  <Eyebrow>step two · before you leave</Eyebrow>
-                  <h2 className="h-section mt-5 text-white/92">
-                    compute it now,
-                    <br />
-                    <span className="text-white/38">so nothing glows later.</span>
-                  </h2>
+                <div className="min-w-0">
+                  <Eyebrow>Step Two · Before You Leave</Eyebrow>
+                  <Reveal delay={0.05}>
+                    <h2 className="h-section mt-5 text-white/92">
+                      Compute It Now,
+                      <br />
+                      <span className="text-white/38">So Nothing Glows Later.</span>
+                    </h2>
+                  </Reveal>
                   <Reveal delay={0.1} className="mt-6">
                     <p className="lead max-w-md">
-                      pick where you&rsquo;ll be standing. the server works out exactly what will be
-                      overhead tonight — sun, moon, planets, named stars — writes the narration, and
+                      Pick where you&rsquo;ll be standing. The server works out exactly what will be
+                      overhead tonight — Sun, Moon, planets, named stars — writes the narration, and
                       seals it into a pack you can carry with no signal at all.
                     </p>
                   </Reveal>
@@ -156,12 +158,12 @@ export default function App() {
                           <span className="pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
                           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
                         </span>
-                        location detected · {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)}
+                        Location Detected · {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)}
                       </p>
                     </Reveal>
                   )}
 
-                  <div className="mt-8">
+                  <Reveal delay={0.22} className="mt-8">
                     <PrepareCard
                       onPrepare={handlePrepare}
                       loading={loading}
@@ -169,7 +171,7 @@ export default function App() {
                       initialLat={geo.lat}
                       initialLon={geo.lon}
                     />
-                  </div>
+                  </Reveal>
 
                   {error !== null && (
                     <p className="mt-4 text-center text-sm text-amber-300/85" role="alert">
@@ -191,12 +193,12 @@ export default function App() {
                         className="space-y-6"
                       >
                         <div className="text-center lg:text-left">
-                          <Eyebrow>step three · outside</Eyebrow>
+                          <Eyebrow>Step Three · Outside</Eyebrow>
                           <h3 className="h-display mt-4 text-2xl text-white/92 sm:text-3xl">
-                            your sky is ready.
+                            Your Sky Is Ready.
                           </h3>
-                          <p className="copy mt-2 text-sm">
-                            put the phone face-down. we&rsquo;ll talk for {duration === 60 ? 'sixty' : duration === 120 ? 'two' : 'ninety'}{' '}
+                          <p className="copy mt-3 text-sm sm:text-[0.95rem]">
+                            Put the phone face-down. We&rsquo;ll talk for {duration === 60 ? 'sixty' : duration === 120 ? 'two' : 'ninety'}{' '}
                             {duration === 120 ? 'minutes' : 'seconds'}, then leave you alone.
                           </p>
                         </div>
@@ -205,7 +207,7 @@ export default function App() {
                           transcriptUrl={packData?.transcriptPath ?? null}
                           packId={packData?.packId ?? null}
                           audioAvailable={Boolean(packData?.audio?.available)}
-                          script={packData?.narration?.script || snapshot?.warnings?.[0] || 'look up tonight.'}
+                           script={packData?.narration?.script || snapshot?.warnings?.[0] || 'Look up tonight.'}
                         />
                         {snapshot && <SkyPreview snapshot={snapshot} />}
                       </motion.div>
@@ -223,9 +225,9 @@ export default function App() {
                               🔭
                             </span>
                           </div>
-                          <p className="font-display text-lg text-white/70">your sky, once you ask for it</p>
+                          <p className="font-display text-lg text-white/70">Your Sky, Once You Ask For It</p>
                           <p className="copy mx-auto mt-2 max-w-xs text-sm">
-                            nothing appears here until you prepare. the pack is computed, narrated,
+                            Nothing appears here until you prepare. The pack is computed, narrated,
                             and sealed before a single star comes out.
                           </p>
                         </div>

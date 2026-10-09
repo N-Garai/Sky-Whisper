@@ -156,7 +156,7 @@ export function PackPlayer({ audioUrl, transcriptUrl, script, packId, audioAvail
               {countdown}
             </motion.p>
             <p className="absolute bottom-16 font-mono text-[0.6rem] uppercase tracking-[0.3em] text-white/30">
-              put the phone face-down
+              Put the Phone Face-Down
             </p>
           </motion.div>
         )}
@@ -216,31 +216,41 @@ export function PackPlayer({ audioUrl, transcriptUrl, script, packId, audioAvail
         <p className="text-center text-sm text-white/45">
           {audioAvailable ? (
             offline.status === 'cached'
-              ? `offline ready · ${(offline.bytes / 1024 / 1024).toFixed(1)} MB cached`
+              ? `Offline ready · ${(offline.bytes / 1024 / 1024).toFixed(1)} MB cached`
               : offline.status === 'caching'
-                ? 'caching for offline…'
-                : 'preparing offline copy…'
+                ? 'Caching for offline…'
+                : 'Preparing offline copy…'
           ) : (
-            'audio is not configured on this server — the transcript below is your guide.'
+            'Audio is not configured on this server — the transcript below is your guide.'
           )}
         </p>
       </div>
 
       {/* Transcript */}
-      <div className="panel w-full p-5 text-left">
-        <p className="eyebrow mb-3 !text-white/35">tonight’s narration</p>
-        <p className="copy whitespace-pre-line text-sm">{script}</p>
-      </div>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
+        className="panel w-full p-5 text-left sm:p-6"
+      >
+        <p className="eyebrow mb-3 !text-white/35">Tonight’s Narration</p>
+        <p className="copy whitespace-pre-line text-sm sm:text-[0.95rem]">{script}</p>
+      </motion.div>
 
       {/* Downloads */}
-      <div className="flex flex-wrap justify-center gap-3">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+        className="flex flex-wrap justify-center gap-3"
+      >
         {audioUrl && (
           <a
             href={audioUrl}
             download="skywhisper-pack.mp3"
             className="btn btn-ghost !px-4 !py-2 !text-xs"
           >
-            download audio
+            Download Audio
           </a>
         )}
         {transcriptUrl && (
@@ -249,10 +259,10 @@ export function PackPlayer({ audioUrl, transcriptUrl, script, packId, audioAvail
             download="skywhisper-transcript.txt"
             className="btn btn-ghost !px-4 !py-2 !text-xs"
           >
-            download transcript
+            Download Transcript
           </a>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }

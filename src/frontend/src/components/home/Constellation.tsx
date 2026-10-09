@@ -13,7 +13,8 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 export const REVEAL_TRANSITION = { duration: 0.85, ease: EASE } as const;
 
 /**
- * Split a string into words, then animate each word up behind a mask.
+ * Split a string into words, then animate each word up behind a mask —
+ * rising from a soft blur into full sharpness (the showcase reveal).
  * Words (not characters) keep line-breaking sane on every viewport.
  */
 export function SplitText({
@@ -41,8 +42,8 @@ export function SplitText({
         <span key={`${word}-${i}`} className="reveal-mask" aria-hidden="true">
           <motion.span
             className="reveal-inner"
-            initial={reduce ? { y: 0, opacity: 1 } : { y: '108%', opacity: 0 }}
-            animate={{ y: '0%', opacity: 1 }}
+            initial={reduce ? { y: 0, opacity: 1 } : { y: '108%', opacity: 0, filter: 'blur(14px)' }}
+            animate={{ y: '0%', opacity: 1, filter: 'blur(0px)' }}
             viewport={once ? { once: true, margin: '-8% 0px' } : undefined}
             transition={{ duration: 0.95, ease: EASE, delay: delay + i * stagger }}
           >
