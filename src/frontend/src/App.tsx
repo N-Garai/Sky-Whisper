@@ -125,8 +125,6 @@ export default function App() {
             onPrepare={() =>
               document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
             }
-            lat={geo.lat}
-            lon={geo.lon}
           />
 
           {/* ————— PREPARE ————— */}

@@ -8,7 +8,6 @@ import {
   useTransform,
 } from 'framer-motion';
 import { Constellation, Eyebrow, Reveal, SplitText, GradientReveal } from './Constellation';
-import { TonightStrip } from './TonightStrip';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -263,12 +262,8 @@ function ScrollCue({ onClick }: { onClick: () => void }) {
 
 export function HomePage({
   onPrepare,
-  lat,
-  lon,
 }: {
   onPrepare: () => void;
-  lat: number | null;
-  lon: number | null;
 }) {
   const reduce = useReducedMotion();
   const heroRef = useRef<HTMLElement>(null);
@@ -377,13 +372,6 @@ export function HomePage({
         </motion.div>
 
         <ScrollCue onClick={scrollTo('ritual')} />
-      </section>
-
-      {/* ————— LIVE STRIP ————— */}
-      <section className="section !py-14 sm:!py-16">
-        <div className="shell">
-          <TonightStrip lat={lat} lon={lon} />
-        </div>
       </section>
 
       {/* ————— RITUAL ————— */}
