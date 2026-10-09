@@ -57,9 +57,56 @@ export function SplitText({
 }
 
 /**
- * Generic in-view reveal. Wrap any block; it fades and lifts into place.
+ * Gradient accent line — one masked span that rises from a blur while its
+ * golden glow blooms around it.
+ *
+ * The gradient, the transparent clip, AND the animated filter all live on
+ * the same element on purpose: `background-clip: text` on a parent cannot
+ * paint through filtered descendants, so nesting animated words inside a
+ * gradient wrapper renders permanently invisible. Single element, no bug.
  */
-export function Reveal({
+export function GradientReveal({
+  text,
+  className = '',
+  delay = 0,
+  duration = 1.15,
+}: {
+  text: string;
+  className?: string;
+  delay?: number;
+  duration?: number;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <span className="reveal-mask-wide" aria-label={text}>
+      <motion.span
+        aria-hidden="true"
+        className={`reveal-inner bg-gradient-to-br from-[#FFE9C4] via-amber-300 to-amber-deep bg-clip-text text-transparent ${className}`}
+        initial={
+          reduce
+            ? false
+            : {
+                y: '108%',
+                opacity: 0,
+                filter: 'blur(16px) drop-shadow(0 0 0px rgba(245,201,123,0))',
+              }
+        }
+        animate={{
+          y: '0%',
+          opacity: 1,
+          filter: 'blur(0px) drop-shadow(0 0 22px rgba(245,201,123,0.45))',
+        }}
+        transition={{ duration, ease: EASE, delay }}
+      >
+        {text}
+      </motion.span>
+    </span>
+  );
+}
+
+/**
+ * Generic in-view reveal. Wrap any block; it fades and lifts into place.
+ */export function Reveal({
   children,
   delay = 0,
   y = 26,

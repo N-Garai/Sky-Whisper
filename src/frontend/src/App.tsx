@@ -132,7 +132,7 @@ export default function App() {
           {/* ————— PREPARE ————— */}
           <section id="prepare" ref={prepareRef} className="section">
             <div className="shell">
-              <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-start lg:gap-14">
+              <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:items-start lg:gap-16">
                 {/* Form column */}
                 <div className="min-w-0">
                   <Eyebrow>Step Two · Before You Leave</Eyebrow>
@@ -143,7 +143,7 @@ export default function App() {
                       <span className="text-white/38">So Nothing Glows Later.</span>
                     </h2>
                   </Reveal>
-                  <Reveal delay={0.1} className="mt-6">
+                  <Reveal delay={0.1} className="mt-7">
                     <p className="lead max-w-md">
                       Pick where you&rsquo;ll be standing. The server works out exactly what will be
                       overhead tonight — Sun, Moon, planets, named stars — writes the narration, and
@@ -163,7 +163,7 @@ export default function App() {
                     </Reveal>
                   )}
 
-                  <Reveal delay={0.22} className="mt-8">
+                  <Reveal delay={0.22} className="mt-9">
                     <PrepareCard
                       onPrepare={handlePrepare}
                       loading={loading}
@@ -174,7 +174,7 @@ export default function App() {
                   </Reveal>
 
                   {error !== null && (
-                    <p className="mt-4 text-center text-sm text-amber-300/85" role="alert">
+                    <p className="mt-5 text-center text-sm text-amber-300/85" role="alert">
                       {error}
                     </p>
                   )}

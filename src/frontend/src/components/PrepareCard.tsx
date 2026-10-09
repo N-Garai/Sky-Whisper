@@ -128,7 +128,7 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
                 type="button"
                 onClick={() => setDuration(d.value)}
                 aria-pressed={active}
-                className="relative z-10 min-h-[4.4rem] rounded-lg px-2 py-2.5 text-center transition-colors"
+                className="relative z-10 min-h-[4.75rem] rounded-lg px-2 py-2.5 text-center transition-colors"
               >
                 {active && (
                   <motion.span
@@ -157,7 +157,7 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon 
       <motion.button
         onClick={handleSubmit}
         disabled={loading || !valid}
-        className="btn btn-primary mt-8 w-full"
+        className="btn btn-primary mt-9 w-full"
         whileHover={{ scale: loading || !valid ? 1 : 1.02 }}
         whileTap={{ scale: loading || !valid ? 1 : 0.98 }}
       >

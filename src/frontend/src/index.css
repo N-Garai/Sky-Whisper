@@ -22,6 +22,7 @@
 
   /* --- type --------------------------------------------------------- */
   --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-accent: "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
@@ -92,6 +93,15 @@ body {
   line-height: 0.96;
   letter-spacing: -0.035em;
   text-wrap: balance;
+}
+
+/* Italic serif accent word inside display headlines — the contrasting
+   voice (showcase-style). Falls back to Georgia offline. */
+.font-accent {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
 .h-section {
@@ -181,15 +191,16 @@ a { text-decoration: none; }
 }
 
 /* --- surfaces -------------------------------------------------------- */
-/* Frosted panel: the workhorse card of the interface. */
+/* Frosted panel: the workhorse card of the interface.
+   NOTE: no backdrop-filter here on purpose — blurred backdrops inside
+   transformed ancestors clip descendants in Chrome (text painting outside
+   card borders). Depth comes from the gradient + shadows instead. */
 .panel {
   position: relative;
   border-radius: 1.5rem;
   border: 1px solid rgb(231 236 247 / 0.09);
   background:
-    linear-gradient(160deg, rgb(231 236 247 / 0.055), rgb(231 236 247 / 0.012) 42%, rgb(4 6 15 / 0.2));
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  backdrop-filter: blur(18px) saturate(1.2);
+    linear-gradient(160deg, rgb(231 236 247 / 0.075), rgb(231 236 247 / 0.028) 42%, rgb(4 6 15 / 0.35));
   box-shadow:
     0 1px 0 0 rgb(231 236 247 / 0.06) inset,
     0 24px 60px -32px rgb(0 0 0 / 0.85);
@@ -259,13 +270,11 @@ a { text-decoration: none; }
 }
 .btn-primary:hover::after { transform: translateX(120%); }
 
-/* Ghost: outlined, quiet. */
+/* Ghost: outlined, quiet. (No backdrop-filter — see .panel note.) */
 .btn-ghost {
   border: 1px solid rgb(231 236 247 / 0.18);
   color: rgb(231 236 247 / 0.82);
-  background: rgb(231 236 247 / 0.03);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: rgb(231 236 247 / 0.045);
 }
 .btn-ghost:hover {
   border-color: rgb(245 201 123 / 0.45);
@@ -407,6 +416,9 @@ a { text-decoration: none; }
    (block would stack every word on its own line). Pure CSS. */
 .reveal-mask { display: inline-block; overflow: hidden; vertical-align: bottom; padding-bottom: 0.1em; margin-bottom: -0.1em; }
 .reveal-inner { display: inline-block; will-change: transform, filter; }
+/* Roomier mask for glowing gradient lines — the drop-shadow bloom needs
+   space or the clip cuts it off mid-glow. */
+.reveal-mask-wide { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0.22em 0.3em; margin: -0.22em -0.3em; }
 
 /* --- true night mode (red-shift) ------------------------------------- */
 /* Deep-red monochrome that preserves dark adaptation. Applied to the app

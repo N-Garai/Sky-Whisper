@@ -7,10 +7,31 @@ import {
   useSpring,
   useTransform,
 } from 'framer-motion';
-import { Constellation, Eyebrow, Reveal, SplitText } from './Constellation';
+import { Constellation, Eyebrow, Reveal, SplitText, GradientReveal } from './Constellation';
 import { TonightStrip } from './TonightStrip';
+import type { Variants } from 'framer-motion';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+/* Staged row reveal: the row fades up as one wave, cards following in
+   sequence with a blur-to-sharp settle. Ritual row first, features row
+   second — scroll choreography, not pop-in. */
+const rowVariants: Variants = {
+  hidden: {},
+  show: (stagger: number = 0.14) => ({
+    transition: { staggerChildren: stagger, delayChildren: 0.1 },
+  }),
+};
+
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 38, filter: 'blur(8px)' },
+  show: {
+    opacity: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: { duration: 0.9, ease: EASE },
+  },
+};
 
 /* ------------------------------------------------------------------ *
  * Hero art — a crescent moon on a tilted orbital plane.
@@ -287,12 +308,8 @@ export function HomePage({
 
               <h1 className="h-display text-white/95" style={{ fontSize: 'var(--fs-hero)' }}>
                 <SplitText text="Tonight’s Sky," delay={0.22} as="span" />
-                <SplitText
-                  text="Whispered."
-                  delay={0.42}
-                  as="span"
-                  className="bg-gradient-to-br from-[#FFE9C4] via-amber-300 to-amber-deep bg-clip-text text-transparent text-glow"
-                />
+                <br />
+                <GradientReveal text="Whispered." delay={0.45} className="font-accent pr-[0.12em]" />
               </h1>
 
               <motion.p
@@ -377,41 +394,65 @@ export function HomePage({
             </h2>
           </div>
 
-          <div className="mt-12 grid gap-4 sm:gap-5 md:grid-cols-3">
-            {RITUAL.map((r, i) => (
-              <Reveal key={r.n} delay={i * 0.12} className="group panel panel-hover p-6 sm:p-7">
-                <div className="mb-5 flex items-center justify-between">
+          <motion.div
+            variants={rowVariants}
+            initial={reduce ? 'show' : 'hidden'}
+            whileInView="show"
+            viewport={{ once: true, margin: '-12% 0px' }}
+            custom={0.16}
+            className="mt-12 grid gap-5 sm:gap-6 md:grid-cols-3"
+          >
+            {RITUAL.map((r) => (
+              <motion.article
+                key={r.n}
+                variants={cardVariants}
+                whileHover={{ y: -5 }}
+                className="group panel p-7 sm:p-8"
+              >
+                <div className="mb-6 flex items-center justify-between">
                   <span className="num text-sm tracking-[0.3em] text-amber-300/80">{r.n}</span>
                   <span
                     className="h-1.5 w-1.5 rounded-full bg-amber-300/50 transition-all duration-500 group-hover:scale-150 group-hover:bg-amber-300"
                     aria-hidden="true"
                   />
                 </div>
-                <h3 className="h-display mb-3 text-xl text-white/92 sm:text-2xl">{r.title}</h3>
-                <p className="copy text-sm">{r.copy}</p>
-              </Reveal>
+                <h3 className="h-display mb-3.5 text-xl text-white/92 sm:text-2xl">{r.title}</h3>
+                <p className="copy text-sm leading-relaxed">{r.copy}</p>
+              </motion.article>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
       {/* ————— FEATURES ————— */}
       <section className="section">
         <div className="shell">
-          <div className="grid gap-4 sm:gap-5 md:grid-cols-3">
-            {FEATURES.map((f, i) => (
-              <Reveal key={f.n} delay={i * 0.12} className="panel panel-hover overflow-hidden p-6 sm:p-7">
-                <div className="mb-5 flex items-start justify-between">
+          <motion.div
+            variants={rowVariants}
+            initial={reduce ? 'show' : 'hidden'}
+            whileInView="show"
+            viewport={{ once: true, margin: '-12% 0px' }}
+            custom={0.18}
+            className="grid gap-5 sm:gap-6 md:grid-cols-3"
+          >
+            {FEATURES.map((f) => (
+              <motion.div
+                key={f.n}
+                variants={cardVariants}
+                whileHover={{ y: -5 }}
+                className="panel p-7 transition-colors hover:border-amber-300/25 sm:p-8"
+              >
+                <div className="mb-6 flex items-start justify-between">
                   <span className="text-2xl sm:text-3xl" aria-hidden="true">
                     {f.icon}
                   </span>
-                  <span className="num text-sm tracking-[0.3em] text-white/22">{f.n}</span>
+                  <span className="num text-sm tracking-[0.3em] text-white/25">{f.n}</span>
                 </div>
-                <h3 className="mb-2 text-lg font-semibold text-white/88">{f.title}</h3>
-                <p className="copy text-sm">{f.copy}</p>
-              </Reveal>
+                <h3 className="mb-2.5 text-lg font-semibold text-white/90">{f.title}</h3>
+                <p className="copy text-sm leading-relaxed">{f.copy}</p>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -421,11 +462,13 @@ export function HomePage({
           <Reveal className="mx-auto max-w-2xl text-center">
             <div className="rule-shimmer mx-auto mb-10 w-full max-w-xs" />
             <blockquote className="h-display text-white/78" style={{ fontSize: 'var(--fs-h3)' }}>
-              &ldquo;Your eyes need twenty minutes of darkness.
-              <span className="bg-gradient-to-br from-[#FFE9C4] to-amber-300 bg-clip-text text-transparent">
-                {' '}
-                One glance at a bright screen resets them.
-              </span>
+              &ldquo;Your eyes need twenty minutes of darkness.{' '}
+              <GradientReveal
+                text="One glance at a bright screen resets them."
+                delay={0.15}
+                duration={1}
+                className="font-accent"
+              />
               &rdquo;
             </blockquote>
             <p className="copy mt-5 text-sm">So the screen was designed out of the experience.</p>
