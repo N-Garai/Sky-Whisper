@@ -7,6 +7,7 @@ import {
   useTransform,
 } from 'framer-motion';
 import { Eyebrow, Reveal, SplitText, GradientReveal } from './home/Constellation';
+import { ScrollReveal } from './ScrollReveal';
 
 const CARDS = [
   {
@@ -50,34 +51,30 @@ const PROOF: Array<{ value: string; label: string }> = [
 
 function PrincipleCard({ n, title, copy, cta = false }: { n: string; title: string; copy: string; cta?: boolean }) {
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 34, filter: 'blur(8px)' }}
-      whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      viewport={{ once: true, margin: '-10% 0px' }}
-      transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
-      className="panel flex h-full min-h-[22rem] w-[80vw] shrink-0 flex-col p-7 sm:w-[26rem] sm:p-9"
-    >
-      <div className="mb-5 flex items-center gap-4">
-        <span className="num text-sm tracking-[0.3em] text-amber-300/80">{n}</span>
-        <span className="h-px flex-1 bg-gradient-to-r from-amber-300/25 to-transparent" />
-      </div>
-      <h3 className="h-display mb-4 text-2xl text-white/92 sm:text-[1.7rem]">{title}</h3>
-      <p className="copy text-sm leading-relaxed sm:text-[0.95rem]">{copy}</p>
-      {cta && (
-        <motion.a
-          href="#prepare"
-          onClick={(e) => {
-            e.preventDefault();
-            document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth' });
-          }}
-          className="btn btn-ghost mt-8 w-fit !px-5 !py-2.5 !text-sm"
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-        >
-          Try It Tonight
-        </motion.a>
-      )}
-    </motion.article>
+    <ScrollReveal direction="up" bidirectional>
+      <article className="panel flex h-full min-h-[22rem] w-[80vw] shrink-0 flex-col overflow-hidden p-7 sm:w-[26rem] sm:p-9">
+        <div className="mb-5 flex items-center gap-4">
+          <span className="num text-sm tracking-[0.3em] text-amber-300/80">{n}</span>
+          <span className="h-px flex-1 bg-gradient-to-r from-amber-300/25 to-transparent" />
+        </div>
+        <h3 className="h-display mb-4 text-2xl text-white/92 sm:text-[1.7rem]">{title}</h3>
+        <p className="copy text-sm leading-relaxed sm:text-[0.95rem]">{copy}</p>
+        {cta && (
+          <motion.a
+            href="#prepare"
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="btn btn-ghost mt-8 w-fit !px-5 !py-2.5 !text-sm"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+          >
+            Try It Tonight
+          </motion.a>
+        )}
+      </article>
+    </ScrollReveal>
   );
 }
 

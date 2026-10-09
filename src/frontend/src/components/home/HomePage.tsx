@@ -8,6 +8,8 @@ import {
   useTransform,
 } from 'framer-motion';
 import { Constellation, Eyebrow, Reveal, SplitText, GradientReveal } from './Constellation';
+import { Saturn3D } from '../Saturn3D';
+import { ScrollReveal, ScrollRevealList } from '../ScrollReveal';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -359,14 +361,14 @@ export function HomePage({
               </motion.dl>
             </div>
 
-            {/* — 3D scope column — */}
+            {/* — 3D Saturn column — */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 1.4, ease: EASE, delay: 0.35 }}
               className="flex justify-center lg:justify-end"
             >
-              <OrbitScope />
+              <Saturn3D className="w-full max-w-[28rem]" />
             </motion.div>
           </div>
         </motion.div>

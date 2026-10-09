@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Starfield } from './components/Starfield';
+import { DynamicSpaceBackground } from './components/DynamicSpaceBackground';
 import { HomePage } from './components/home/HomePage';
 import { Nav } from './components/Nav';
 import { PrepareCard, PREPARE_STAGES } from './components/PrepareCard';
@@ -89,31 +89,9 @@ export default function App() {
 
   return (
     <div className={`relative min-h-dvh bg-abyss ${redShift ? 'red-shift' : ''}`}>
-      {/* ————— background: nebula + living starfield ————— */}
+      {/* ————— dynamic deep-space background ————— */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-        <div
-          className="nebula nebula-a absolute -left-[18%] -top-[22%] h-[46rem] w-[46rem] rounded-full blur-[110px]"
-          style={{ background: 'radial-gradient(circle, rgba(109,92,240,0.42), transparent 68%)' }}
-        />
-        <div
-          className="nebula nebula-b absolute -right-[20%] top-[22%] h-[40rem] w-[40rem] rounded-full blur-[120px]"
-          style={{ background: 'radial-gradient(circle, rgba(245,201,123,0.20), transparent 66%)' }}
-        />
-        <div
-          className="nebula nebula-c absolute bottom-[-24%] left-[26%] h-[42rem] w-[42rem] rounded-full blur-[130px]"
-          style={{ background: 'radial-gradient(circle, rgba(47,42,107,0.62), transparent 70%)' }}
-        />
-        {/* Vignette keeps text legible over the brightest part of the wash. */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(4,6,15,0.55) 78%, rgba(4,6,15,0.9) 100%)',
-          }}
-        />
-      </div>
-      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
-        <Starfield />
+        <DynamicSpaceBackground />
       </div>
 
       {/* ————— app ————— */}
