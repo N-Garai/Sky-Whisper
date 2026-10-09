@@ -5,7 +5,7 @@ with the cached shell as fallback (so the app still loads on a cold start);
 for pack audio/transcript, stale-while-revalidate so a downloaded pack
 plays with no network at all.
 */
-const SHELL_CACHE = 'skywhisper-shell-v2';
+const SHELL_CACHE = 'skywhisper-shell-v3';
 const PACK_CACHE = 'skywhisper-packs-v1';
 
 const SHELL_ASSETS = [
