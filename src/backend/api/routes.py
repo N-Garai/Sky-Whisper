@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,9 +21,15 @@ from src.shared.schemas import PackRequest
 
 APP_ROOT = Path(__file__).resolve().parents[3]
 PACKS_DIR = APP_ROOT / "tmp" / "packs"
+VOICE_DIR = APP_ROOT / "tmp" / "voice"
 FRONTEND_DIST = APP_ROOT / "src" / "frontend" / "dist"
 
 PACKS_DIR.mkdir(parents=True, exist_ok=True)
+VOICE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Bump when the pack contents or cache semantics change. Old packs keyed under
+# a previous version are never served again.
+PACK_CACHE_VERSION = "v2-generation"
 
 app = FastAPI(
     title="SkyWhisper API",
@@ -97,7 +104,9 @@ async def generate_pack(req: PackRequest) -> JSONResponse:
 
     # Open-weight model path (Gemma / Ollama). Falls back to the deterministic
     # narrator on any failure — validated output only, never unvalidated text.
-    from src.backend.narration.llm_provider import narrate_with_model
+    from src.backend.narration.llm_provider import (
+        chain_signature, narrate_with_model, template_generation,
+    )
 
     model_script = await narrate_with_model(snap, req.duration_seconds)
     if model_script is not None:
@@ -106,11 +115,14 @@ async def generate_pack(req: PackRequest) -> JSONResponse:
         script["fallback_used"] = True
         script["model"] = "template"
         script["provider"] = "template"
+        script["generation"] = template_generation()
 
+    # The key covers the whole configured chain, so adding or changing a
+    # stage can never be answered from a pack built by an older chain.
     ckey = cache_key(
         req.latitude, req.longitude, req.timestamp,
         req.duration_seconds, os.getenv("ELEVEN_VOICE_ID", ""),
-        os.getenv("LLM_PROVIDER", "template"),
+        f"{PACK_CACHE_VERSION}|{chain_signature()}",
     )
 
     meta_path = PACKS_DIR / f"{ckey}.json"
@@ -154,6 +166,88 @@ async def get_audio(pack_id: str) -> Response:
     path = PACKS_DIR / f"{pack_id}.mp3"
     if not path.exists():
         raise HTTPException(status_code=404, detail="pack expired or not found")
+    return Response(path.read_bytes(), media_type="audio/mpeg")
+
+
+@app.post("/api/voice/answer")
+async def voice_answer(body: dict) -> JSONResponse:
+    """Spoken answer to a free-form voice question (M3 agent loop).
+
+    Builds a fresh snapshot for the given instant, runs the model chain at
+    a short 30-second budget, and renders TTS when configured. Satellites
+    and weather are skipped on purpose: voice answers must stay fast.
+    """
+    try:
+        lat = float(body.get("latitude"))
+        lon = float(body.get("longitude"))
+        ts = str(body.get("timestamp", ""))
+        transcript = str(body.get("transcript", ""))[:500]
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError("latitude/longitude out of range")
+        parse_timestamp(ts)  # validates the instant; raises on garbage
+    except Exception:
+        raise HTTPException(status_code=422, detail="latitude, longitude, timestamp required")
+    if not transcript.strip():
+        raise HTTPException(status_code=422, detail="transcript required")
+
+    from src.backend.narration.llm_provider import narrate_with_model
+
+    req = PackRequest(latitude=lat, longitude=lon, timestamp=ts)
+    try:
+        snap = build_snapshot(req)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"ephemeris error: {exc}")
+
+    question = (
+        "The listener just asked, in their own words: "
+        f"{transcript.strip()} "
+        "Answer that question directly from tonight's computed facts, briefly, "
+        "in calm spoken prose for text-to-speech. No markdown, no bullets."
+    )
+    history = body.get("history", [])
+    if isinstance(history, list) and history:
+        prior: list[str] = []
+        for h in history[-2:]:
+            if not isinstance(h, dict):
+                continue
+            q = str(h.get("q", ""))[:300].strip()
+            a = str(h.get("a", ""))[:600].strip()
+            if q and a:
+                prior.append(f"Earlier they asked: {q} You answered: {a}")
+        if prior:
+            question = "\n".join(prior) + "\nNow they follow up: " + question
+    result = await narrate_with_model(snap, 30, extra_context=question)
+    if result is not None:
+        text, provider, model = result["script"], result["provider"], result["model"]
+    else:
+        fallback = build_script(snap, 30)
+        text, provider, model = fallback["script"], "template", "template"
+
+    audio_path: str | None = None
+    tts = await synthesize(text)
+    if tts.available and tts.audio:
+        vid = uuid.uuid4().hex[:12]
+        (VOICE_DIR / f"{vid}.mp3").write_bytes(tts.audio)
+        audio_path = f"/api/voice/audio/{vid}"
+
+    return JSONResponse({
+        "reply": text,
+        "word_count": len(text.split()),
+        "provider": provider,
+        "model": model,
+        "audio": tts.to_dict(),
+        "audioPath": audio_path,
+    })
+
+
+@app.get("/api/voice/audio/{vid}")
+async def get_voice_audio(vid: str) -> Response:
+    """Stream a voice-reply MP3. 404 after restart — ephemeral by design."""
+    if not vid.isalnum() or len(vid) > 32:
+        raise HTTPException(status_code=404, detail="not found")
+    path = VOICE_DIR / f"{vid}.mp3"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="expired or not found")
     return Response(path.read_bytes(), media_type="audio/mpeg")
 
 

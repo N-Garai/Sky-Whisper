@@ -48,6 +48,20 @@ async function selftest(): Promise<void> {
     failures.push(`workflow build failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // Explicit rung pin used by the Python chain (pure resolution, no network).
+  const pinned = resolveProvider({
+    ...process.env,
+    MASTRA_MODEL_ID: 'openai/gpt-oss-120b',
+    MASTRA_BASE_URL: 'https://api.groq.com/openai/v1',
+    MASTRA_API_KEY: '',
+  } as NodeJS.ProcessEnv);
+  if (!pinned || pinned.provider !== 'custom' || pinned.modelId !== 'openai/gpt-oss-120b') {
+    failures.push('rung override resolution failed');
+  }
+  if (resolveProvider({ ...process.env, MASTRA_MODEL_ID: 'x' } as NodeJS.ProcessEnv) !== null) {
+    failures.push('rung override without base URL should be unconfigured');
+  }
+
   if (failures.length > 0) {
     process.stdout.write(JSON.stringify({ ok: false, failures }) + '\n');
     process.exit(1);
@@ -61,7 +75,7 @@ async function narrate(): Promise<void> {
     process.stdout.write(JSON.stringify({ error: 'no model provider configured' }) + '\n');
     process.exit(3);
   }
-  let input: { factsJson: string; durationSeconds: number; budgetWords: number } | null = null;
+  let input: { factsJson: string; durationSeconds: number; budgetWords: number; context?: string } | null = null;
   try {
     input = JSON.parse(await readStdin());
   } catch {
@@ -71,10 +85,18 @@ async function narrate(): Promise<void> {
     process.stdout.write(JSON.stringify({ error: 'invalid stdin JSON' }) + '\n');
     process.exit(2);
   }
+  if (typeof input.context !== 'string') input.context = '';
   try {
     const workflow = buildNarrationWorkflow(cfg);
     const run = await workflow.createRun();
-    const result = await run.start({ inputData: input });
+    const result = await run.start({
+      inputData: {
+        factsJson: input.factsJson,
+        durationSeconds: input.durationSeconds,
+        budgetWords: input.budgetWords,
+        context: input.context,
+      },
+    });
     const text = result.status === 'success' ? result.result?.text : null;
     if (typeof text === 'string' && text.length >= 120) {
       process.stdout.write(JSON.stringify({ text }) + '\n');

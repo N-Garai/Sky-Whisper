@@ -8,6 +8,7 @@ import { PackPlayer } from './components/PackPlayer';
 import { SkyPreview } from './components/SkyPreview';
 import { AboutSection } from './components/AboutSection';
 import { Footer } from './components/Footer';
+import { VoiceBar } from './components/VoiceBar';
 import { Eyebrow, Reveal } from './components/home/Constellation';
 import { useGeolocation } from './hooks/useGeolocation';
 
@@ -19,6 +20,8 @@ export default function App() {
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [redShift, setRedShift] = useState(false);
+  const [autoPlayKey, setAutoPlayKey] = useState(0);
+  const [transport, setTransport] = useState<{ action: 'play' | 'pause' | 'volume'; dir?: 'up' | 'down'; n: number } | null>(null);
   const stageTimer = useRef<number | null>(null);
   const prepareRef = useRef<HTMLElement>(null);
   const listenRef = useRef<HTMLDivElement>(null);
@@ -87,6 +90,47 @@ export default function App() {
 
   const hasPack = packData !== null;
 
+  /* ---- voice-agent wiring (M2): keywords act without taps ---- */
+  const coords = () => ({
+    lat: geo.lat ?? 22.57,
+    lon: geo.lon ?? 88.36,
+  });
+
+  const voiceDescribe = () => {
+    if (hasPack) {
+      prepareRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setAutoPlayKey((n) => n + 1);
+      return;
+    }
+    const { lat, lon } = coords();
+    void handlePrepare({
+      lat,
+      lon,
+      timestamp: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+      duration: 90,
+    }).then(() => setAutoPlayKey((n) => n + 1));
+  };
+
+  const voiceReplay = () => {
+    if (!hasPack) {
+      voiceDescribe();
+      return;
+    }
+    prepareRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setAutoPlayKey((n) => n + 1);
+  };
+
+  const voiceTransport = (action: 'play' | 'pause') => {
+    if (!hasPack) return;
+    prepareRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTransport((t) => ({ action, n: (t?.n ?? 0) + 1 }));
+  };
+
+  const voiceVolume = (direction: 'up' | 'down') => {
+    if (!hasPack) return;
+    setTransport((t) => ({ action: 'volume', dir: direction, n: (t?.n ?? 0) + 1 }));
+  };
+
   return (
     <div className={`relative min-h-dvh bg-[#030508] ${redShift ? 'red-shift' : ''}`}>
       {/* ————— dynamic deep-space background ————— */}
@@ -146,6 +190,7 @@ export default function App() {
                       stage={stage}
                       initialLat={geo.lat}
                       initialLon={geo.lon}
+                      autoPrepare={!hasPack}
                     />
                   </Reveal>
 
@@ -184,6 +229,9 @@ export default function App() {
                           packId={packData?.packId ?? null}
                           audioAvailable={Boolean(packData?.audio?.available)}
                            script={packData?.narration?.script || snapshot?.warnings?.[0] || 'Look up tonight.'}
+                          generation={packData?.narration?.generation ?? null}
+                          autoPlayKey={autoPlayKey}
+                          transport={transport}
                         />
                         {snapshot && <SkyPreview snapshot={snapshot} />}
                       </motion.div>
@@ -219,6 +267,15 @@ export default function App() {
         </main>
 
         <Footer />
+
+        <VoiceBar
+          onDescribe={voiceDescribe}
+          onReplay={voiceReplay}
+          onTransport={voiceTransport}
+          onVolume={voiceVolume}
+          lat={geo.lat}
+          lon={geo.lon}
+        />
       </div>
     </div>
   );

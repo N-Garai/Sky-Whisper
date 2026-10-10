@@ -155,6 +155,47 @@ Returns the plain-text narration.
 {"transcript": "tonight, above 22.6 degrees north, 88.4 degrees east..."}
 ```
 
+## `POST /api/voice/answer`
+
+Spoken answer to a free-form voice question (hands-free loop). Builds a
+fresh snapshot for the given instant, runs the model chain at a short
+30-second budget with the question honored first, and renders TTS when
+configured. Satellites and weather are skipped on purpose — voice answers
+must stay fast.
+
+**Request**
+
+```json
+{
+  "latitude": 22.5726,
+  "longitude": 88.3639,
+  "timestamp": "<ISO-8601 UTC instant>",
+  "transcript": "what is that bright one"
+}
+```
+
+**Response**
+
+```json
+{
+  "reply": "That bright one is...",
+  "word_count": 68,
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "audio": {"available": false, "reason": "tts not configured — set ELEVENLABS_API_KEY"},
+  "audioPath": null
+}
+```
+
+Missing/invalid fields return `422`. Without model keys the template
+narrator still answers (flagged `"provider": "template"`), honestly
+audio-less without a TTS key.
+
+## `GET /api/voice/audio/{id}`
+
+Streams a voice-reply MP3. `404` for unknown ids, malformed ids, or after
+a restart — ephemeral storage, same as packs.
+
 ## Errors
 
 Validation failures return `422` with field paths. Ephemeris failures return

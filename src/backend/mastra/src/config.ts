@@ -1,6 +1,11 @@
 /**
  * Provider resolution — mirrors the Python narrator contract exactly.
  *
+ * Two modes. Explicit rung overrides win (the Python chain spawns one CLI
+ * per rung with MASTRA_* pinning model + endpoint + key):
+ *   MASTRA_MODEL_ID + MASTRA_BASE_URL [+ MASTRA_API_KEY] -> custom rung
+ *
+ * Otherwise the ambient single-provider selection applies:
  *   LLM_PROVIDER=template  -> null (deterministic narrator only, default, $0)
  *   LLM_PROVIDER=openai|gemma -> GEMMA_BASE_URL + GEMMA_API_KEY + GEMMA_MODEL
  *   LLM_PROVIDER=ollama     -> local Ollama daemon (or LOCAL_INFERENCE=true)
@@ -10,7 +15,7 @@
  * Ollama runs on the user's own machine.
  */
 export interface ProviderConfig {
-  provider: 'openai' | 'ollama';
+  provider: 'openai' | 'ollama' | 'custom';
   modelId: string;
   url: string;
   apiKey: string;
@@ -22,6 +27,19 @@ function withV1(url: string): string {
 }
 
 export function resolveProvider(env: NodeJS.ProcessEnv = process.env): ProviderConfig | null {
+  // Explicit rung pin from the Python chain — any OpenAI-compatible endpoint.
+  const overrideId = (env.MASTRA_MODEL_ID ?? '').trim();
+  if (overrideId) {
+    const url = (env.MASTRA_BASE_URL ?? '').trim().replace(/\/+$/, '');
+    if (!url) return null;
+    return {
+      provider: 'custom',
+      modelId: overrideId,
+      url,
+      apiKey: (env.MASTRA_API_KEY ?? '').trim(),
+    };
+  }
+
   const provider = (env.LLM_PROVIDER ?? 'template').trim().toLowerCase();
   const localInference = (env.LOCAL_INFERENCE ?? '').toLowerCase() === 'true';
 

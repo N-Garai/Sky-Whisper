@@ -13,11 +13,14 @@ HARD CONSTRAINTS:
 6. If a body is listed as below the horizon, say so gently or omit it — never place it in the sky.
 `;
 
-export function userPrompt(factsBlock: string, durationSeconds: number, budgetWords: number): string {
+export function userPrompt(factsBlock: string, durationSeconds: number, budgetWords: number, context = ''): string {
+  const request = context.trim()
+    ? `The listener just asked, in their own words: ${context.trim()} Answer that question directly from tonight's facts first, briefly, then continue.\n\n`
+    : '';
   return (
     `Narrate tonight's sky for about ${durationSeconds} seconds of speech ` +
     `(roughly ${budgetWords} words). Use only the facts below.\n\n` +
-    `${factsBlock}\n\n` +
+    `${request}${factsBlock}\n\n` +
     `Begin with the moon, then the visible planets, then the brightest stars, ` +
     `then one constellation to trace. End by telling the listener to put the ` +
     `phone down and look up.`

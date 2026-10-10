@@ -41,10 +41,14 @@ async def narrate_via_mastra(
     duration_seconds: int,
     budget_words: int,
     timeout: float = TIMEOUT_SECONDS,
+    env_overrides: dict[str, str] | None = None,
+    context: str | None = None,
 ) -> str | None:
     """Run the Mastra narration workflow. Returns text, or None to fall back.
 
-    Never raises.
+    `env_overrides` pins the harness to one chain rung (model, endpoint,
+    key) without touching the parent process environment. `context` is a
+    listener question the narration must honor first. Never raises.
     """
     if not is_available():
         return None
@@ -52,14 +56,16 @@ async def narrate_via_mastra(
         "factsJson": json.dumps(facts),
         "durationSeconds": duration_seconds,
         "budgetWords": budget_words,
+        "context": context or "",
     })
+    env = {**os.environ, **(env_overrides or {})}
     try:
         proc = await asyncio.create_subprocess_exec(
             "node", str(_CLI), "narrate",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
-            env={**os.environ},
+            env=env,
         )
         out, _ = await asyncio.wait_for(proc.communicate(payload.encode("utf-8")), timeout)
     except Exception:

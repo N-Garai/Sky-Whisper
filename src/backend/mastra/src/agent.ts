@@ -21,6 +21,15 @@ export function modelFor(cfg: ProviderConfig): OpenAICompatibleConfig {
       api: 'chat',
     };
   }
+  if (cfg.provider === 'custom') {
+    return {
+      providerId: 'skywhisper-chain',
+      modelId: cfg.modelId,
+      url: cfg.url,
+      ...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
+      api: 'chat',
+    };
+  }
   return {
     id: `gemma/${cfg.modelId}`,
     url: cfg.url,

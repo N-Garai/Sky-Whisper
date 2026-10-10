@@ -18,6 +18,7 @@ export interface NarrationInput {
   factsJson: string;
   durationSeconds: number;
   budgetWords: number;
+  context?: string;
 }
 
 export interface NarrationOutput {
@@ -30,11 +31,13 @@ const factsStep = createStep({
     factsJson: z.string(),
     durationSeconds: z.number(),
     budgetWords: z.number(),
+    context: z.string().optional().default(''),
   }),
   outputSchema: z.object({
     factsBlock: z.string(),
     durationSeconds: z.number(),
     budgetWords: z.number(),
+    context: z.string(),
   }),
   execute: async ({ inputData }) => {
     const facts = JSON.parse(inputData.factsJson) as Record<string, number | string>;
@@ -46,6 +49,7 @@ const factsStep = createStep({
       factsBlock,
       durationSeconds: inputData.durationSeconds,
       budgetWords: inputData.budgetWords,
+      context: inputData.context ?? '',
     };
   },
 });
@@ -59,15 +63,17 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
       factsBlock: z.string(),
       durationSeconds: z.number(),
       budgetWords: z.number(),
+      context: z.string(),
     }),
     outputSchema: z.object({
       text: z.string(),
       factsBlock: z.string(),
+      context: z.string(),
     }),
     execute: async ({ inputData }) => {
-      const prompt = userPrompt(inputData.factsBlock, inputData.durationSeconds, inputData.budgetWords);
+      const prompt = userPrompt(inputData.factsBlock, inputData.durationSeconds, inputData.budgetWords, inputData.context);
       const res = await agent.generate(prompt, { maxSteps: 3 });
-      return { text: (res.text ?? '').trim(), factsBlock: inputData.factsBlock };
+      return { text: (res.text ?? '').trim(), factsBlock: inputData.factsBlock, context: inputData.context };
     },
   });
 
@@ -76,6 +82,7 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
     inputSchema: z.object({
       text: z.string(),
       factsBlock: z.string(),
+      context: z.string().optional().default(''),
       durationSeconds: z.number().optional(),
       budgetWords: z.number().optional(),
     }),
@@ -97,7 +104,7 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
       let check = validateText(text, facts);
       if (!check.ok) {
         const retry = await agent.generate(
-          `${userPrompt(inputData.factsBlock, 90, 220)}\n\nYour previous output was rejected for these reasons and must not be repeated: ${check.problems.join('; ')}. Rewrite using only the facts above.`,
+          `${userPrompt(inputData.factsBlock, 90, 220, inputData.context ?? '')}\n\nYour previous output was rejected for these reasons and must not be repeated: ${check.problems.join('; ')}. Rewrite using only the facts above.`,
           { maxSteps: 3 },
         );
         text = (retry.text ?? '').trim();
@@ -114,6 +121,7 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
       factsJson: z.string(),
       durationSeconds: z.number(),
       budgetWords: z.number(),
+      context: z.string().optional().default(''),
     }),
     outputSchema: z.object({
       text: z.string(),

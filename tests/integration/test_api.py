@@ -116,3 +116,83 @@ class TestPackEndpoint:
             "timestamp": "2026-10-07T18:00:00Z",
         })
         json.dumps(r.json())
+
+
+class TestVoiceEndpoint:
+    def test_rejects_missing_fields(self, client):
+        assert client.post("/api/voice/answer", json={}).status_code == 422
+        assert client.post("/api/voice/answer", json={
+            "latitude": 22.5726, "longitude": 88.3639,
+            "timestamp": "2026-10-07T18:00:00Z",
+        }).status_code == 422
+        assert client.post("/api/voice/answer", json={
+            "latitude": 999, "longitude": 0,
+            "timestamp": "2026-10-07T18:00:00Z",
+            "transcript": "describe the sky",
+        }).status_code == 422
+
+    def test_answers_without_keys_via_template(self, client):
+        """No provider keys in CI: the template still answers, honestly audio-less."""
+        r = client.post("/api/voice/answer", json={
+            "latitude": 22.5726, "longitude": 88.3639,
+            "timestamp": "2026-10-07T18:00:00Z",
+            "transcript": "describe the sky",
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["reply"]) > 100
+        assert body["provider"] == "template"
+        assert body["audio"]["available"] is False
+        assert body["audioPath"] is None
+
+    def test_model_answer_uses_chain(self, client):
+        from unittest.mock import patch
+
+        from src.backend.narration import llm_provider
+
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None):
+            assert extra_context and "bright" in extra_context
+            assert duration_seconds == 30
+            return {"script": "The moon is high and the night is clear for listening.",
+                    "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],
+                    "fallback_used": False, "model": "m", "provider": "test",
+                    "orchestrator": "direct", "facts": {}}
+
+        with patch.object(llm_provider, "narrate_with_model", side_effect=fake_narrate):
+            r = client.post("/api/voice/answer", json={
+                "latitude": 22.5726, "longitude": 88.3639,
+                "timestamp": "2026-10-07T18:00:00Z",
+                "transcript": "what is that bright one",
+            })
+        assert r.status_code == 200
+        assert r.json()["provider"] == "test"
+
+    def test_voice_audio_404s_unknown(self, client):
+        assert client.get("/api/voice/audio/nope123").status_code == 404
+        assert client.get("/api/voice/audio/../../x").status_code == 404
+
+    def test_voice_history_reaches_model(self, client):
+        from unittest.mock import patch
+
+        from src.backend.narration import llm_provider
+
+        seen: dict = {}
+
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None):
+            seen["context"] = extra_context or ""
+            return {"script": "Jupiter is the bright one you asked about, high in the south.",
+                    "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],
+                    "fallback_used": False, "model": "m", "provider": "test",
+                    "orchestrator": "direct", "facts": {}}
+
+        with patch.object(llm_provider, "narrate_with_model", side_effect=fake_narrate):
+            r = client.post("/api/voice/answer", json={
+                "latitude": 22.5726, "longitude": 88.3639,
+                "timestamp": "2026-10-07T18:00:00Z",
+                "transcript": "tell me more about Jupiter",
+                "history": [{"q": "what is that bright one",
+                             "a": "That is Jupiter, high in the south."}],
+            })
+        assert r.status_code == 200
+        assert "Jupiter, high in the south" in seen["context"]
+        assert "tell me more about Jupiter" in seen["context"]

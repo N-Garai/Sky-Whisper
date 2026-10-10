@@ -39,7 +39,7 @@ def test_system_prompt_forbids_computing_coordinates():
     assert "no markdown" in lowered
 
 
-CHAIN_ENV = ["LLM_PROVIDER", "LOCAL_INFERENCE", "GEMMA_API_KEY", "GEMMA3_MODEL",
+CHAIN_ENV = ["LLM_PROVIDER", "LOCAL_INFERENCE", "GEMMA_API_KEY", "GEMMA_MODEL", "GEMMA3_MODEL",
              "GEMMA4_MODEL", "GROQ_API_KEY", "GROQ_MODEL", "NVIDIA_API_KEY", "NVIDIA_MODEL",
              "OLLAMA_MODEL", "OLLAMA_BASE_URL"]
 
@@ -110,12 +110,18 @@ def test_failed_stage_moves_to_next(snapshot, clean_env):
 
 
 def test_all_stages_failing_falls_back_to_template(snapshot, clean_env):
+    from src.backend.narration import mastra_client
+
     clean_env.setenv("GEMMA_API_KEY", "k")
     clean_env.setenv("GROQ_API_KEY", "g")
-    with patch.object(llm_provider, "_chat", return_value=None):
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chat", return_value=None):
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is None
-    assert any("model chain fell back to template" in w for w in snapshot.warnings)
+    attempts = llm_provider.last_attempts()
+    assert [a["stage"] for a in attempts] == ["gemini-gemma3", "gemini-gemma4", "groq"]
+    assert all(a["status"] == "failed" for a in attempts)
+    assert llm_provider.template_generation()["status"] == "template"
 
 
 def grounded_for(snapshot) -> str:
@@ -146,16 +152,7 @@ def test_model_output_is_validated_before_use(snapshot):
 
 def test_model_output_passing_validation_is_used(snapshot):
     """A model response that stays inside the fact whitelist is accepted."""
-    facts = snapshot_facts(snapshot)
-    illum = int(round(facts["moon.illumination_pct"]))
-    fists = int(facts["moon.fists"])
-    filler = " ".join(["the sky is patient and the night is calm"] * 22)
-    good = (
-        f" Tonight the moon is {illum} percent lit. "
-        f"Find it {fists} fists above the horizon. "
-        "Take a slow breath, and let your eyes relax. "
-        + filler + "."
-    )
+    good = grounded_for(snapshot)
     with patch.object(llm_provider, "_chain", return_value=[{"name": "gemini-gemma4", "base_url": "https://example.test", "model": "gemma-4-26b-a4b-it", "api_key": "k"}]), patch.object(llm_provider, "_chat", return_value=good):
         result = asyncio.run(narrate_with_model(snapshot))
     assert result is not None
@@ -186,3 +183,63 @@ def test_transcript_outside_time_budget_is_rejected(snapshot):
     with patch.object(llm_provider, "_chain", return_value=cfg), patch.object(llm_provider, "_chat", return_value=long_text):
         result = asyncio.run(narrate_with_model(snapshot, duration_seconds=60))
     assert result is None
+
+
+def test_plausible_length_outside_tight_band_ships(snapshot, clean_env):
+    """A fact-clean narration near the budget is accepted even outside ±15 words."""
+    from src.backend.narration import mastra_client
+
+    facts = snapshot_facts(snapshot)
+    illum = int(round(facts["moon.illumination_pct"]))
+    # ~120 words for a 90 s / 218-word budget: outside tight, inside wide.
+    text = f"The moon is {illum} percent lit tonight. " + " ".join(["the night sky is calm and clear"] * 17) + "."
+    assert 60 <= len(text.split()) <= 654
+    cfg = [{"name": "groq", "base_url": "https://example.test",
+            "model": "openai/gpt-oss-120b", "api_key": "g"}]
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chain", return_value=cfg), patch.object(llm_provider, "_chat", return_value=text):
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    assert result is not None
+    assert result["provider"] == "groq"
+
+
+def test_duplicate_model_rung_is_skipped(snapshot, clean_env):
+    """The same model twice in a chain is tried once, not billed twice."""
+    from src.backend.narration import mastra_client
+
+    cfg = [
+        {"name": "gemini-gemma3", "base_url": "https://example.test",
+         "model": "gemma-4-26b-a4b-it", "api_key": "k"},
+        {"name": "gemini-gemma4", "base_url": "https://example.test",
+         "model": "gemma-4-26b-a4b-it", "api_key": "k"},
+        {"name": "groq", "base_url": "https://example.test",
+         "model": "openai/gpt-oss-120b", "api_key": "g"},
+    ]
+    responses = iter([None, grounded_for(snapshot)])
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chain", return_value=cfg), patch.object(
+        llm_provider, "_chat", side_effect=lambda *a, **k: next(responses)) as chat:
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    assert result is not None
+    assert result["provider"] == "groq"
+    assert chat.call_count == 2
+    skips = [a for a in result["generation"]["attempts"] if a["status"] == "skipped"]
+    assert len(skips) == 1 and skips[0]["stage"] == "gemini-gemma4"
+
+
+def test_gemma_model_env_falls_back_to_gemma3(clean_env):
+    """The legacy GEMMA_MODEL name still selects the Gemma 3 rung."""
+    clean_env.setenv("GEMMA_API_KEY", "k")
+    clean_env.setenv("GEMMA_MODEL", "gemma-3-4b-it")
+    chain = llm_provider._chain()
+    assert chain[0]["model"] == "gemma-3-4b-it"
+
+
+def test_chain_defaults_are_live_ids(clean_env):
+    """Defaults must be models the providers actually serve (see docs)."""
+    clean_env.setenv("GEMMA_API_KEY", "k")
+    clean_env.setenv("GROQ_API_KEY", "g")
+    clean_env.setenv("NVIDIA_API_KEY", "n")
+    models = {c["name"]: c["model"] for c in llm_provider._chain()}
+    assert models["groq"] == "openai/gpt-oss-120b"
+    assert models["nvidia-nim"] == "google/gemma-7b"

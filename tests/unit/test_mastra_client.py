@@ -113,3 +113,25 @@ class TestOrchestrationOrder:
             result = asyncio.run(llm_provider.narrate_with_model(snapshot))
         assert result is not None
         assert result["orchestrator"] == "direct"
+
+    def test_mastra_receives_rung_overrides(self, snapshot, monkeypatch):
+        """Each chain rung pins the harness to its own endpoint via env."""
+        from unittest.mock import patch
+
+        seen: dict = {}
+        monkeypatch.setattr(mastra_client, "is_available", lambda: True)
+
+        async def fake_mastra(*args, **kwargs):
+            seen.update(kwargs.get("env_overrides") or {})
+            return grounded_text(snapshot)
+
+        with patch.object(llm_provider, "_chain", return_value=[{"name": "groq", "base_url": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-120b", "api_key": "g"}]), patch.object(
+            mastra_client, "narrate_via_mastra", side_effect=fake_mastra
+        ), patch.object(llm_provider, "_chat") as chat:
+            result = asyncio.run(llm_provider.narrate_with_model(snapshot))
+        assert result is not None
+        assert result["orchestrator"] == "mastra"
+        assert seen["MASTRA_MODEL_ID"] == "openai/gpt-oss-120b"
+        assert seen["MASTRA_BASE_URL"] == "https://api.groq.com/openai/v1"
+        assert seen["MASTRA_API_KEY"] == "g"
+        chat.assert_not_called()
