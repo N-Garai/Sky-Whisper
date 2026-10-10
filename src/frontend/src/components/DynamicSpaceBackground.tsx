@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import * as THREE from 'three';
 
 interface Particle {
   x: number;
@@ -17,6 +18,78 @@ interface Particle {
  * and subtle aurora gradients. Inspired by Zentry and Spaced — living,
  * breathing depth that never repeats.
  */
+/*
+ * Rotating point-cloud layer (a cyan point cloud over a starfield): 5,000 cyan
+ * points in a 100-unit cube, rotated slowly on X and Y. Sits over the canvas
+ * starfield base, and is skipped entirely under prefers-reduced-motion.
+ */
+function PointCloudLayer() {
+  const mountRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+    mount.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    camera.position.z = 10;
+
+    const count = 5000;
+    const pos = new Float32Array(count * 3);
+    for (let i = 0; i < count * 3; i++) pos[i] = (Math.random() - 0.5) * 100;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0x00f5ff,
+      size: 0.15,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+    });
+    const points = new THREE.Points(geo, mat);
+    scene.add(points);
+
+    const resize = () => {
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / Math.max(h, 1);
+      camera.updateProjectionMatrix();
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
+
+    let raf = 0;
+    const start = performance.now();
+    const tick = () => {
+      const t = (performance.now() - start) / 1000;
+      points.rotation.x = t * 0.05;
+      points.rotation.y = t * 0.03;
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      geo.dispose();
+      mat.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, []);
+
+  return <div ref={mountRef} className="pointer-events-none absolute inset-0" />;
+}
+
 export function DynamicSpaceBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -208,6 +281,9 @@ export function DynamicSpaceBackground() {
         className="absolute inset-0 mix-blend-screen"
         style={{ opacity: 0.85 }}
       />
+
+      {/* Rotating cyan point cloud, a cyan point cloud over a starfield */}
+      <PointCloudLayer />
     </>
   );
 }
