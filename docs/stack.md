@@ -38,15 +38,10 @@ facts/validator tools, model routed to the hosted endpoint or local
 Ollama), and the result passes the same Python validator before audio.
 The model never computes coordinates; it receives the finished snapshot.
 
-Model currency (verified October 2026): the default `gemma-3-4b-it` is a
-served, known-good ID on the Gemini API's OpenAI-compatible endpoint
-(`.../v1beta/openai`), and `gemma3:1b` is a published Ollama tag — both
-are deliberately boring choices so the demo never 404s. The current
-generation is **Gemma 4** (Apache 2.0; hosted IDs `gemma-4-31b-it` and
-`gemma-4-26b-a4b-it` per Google's "Run Gemma with the Gemini API" docs;
-Ollama `gemma4` tags incl. `e2b` for small machines). Switching
-generations is one environment variable (`GEMMA_MODEL` / `OLLAMA_MODEL`)
-— but verify a new ID with your own key first, since Google documents
+Model currency: the default is **Gemma 4** (`gemma-4-26b-a4b-it`, set in code and in
+`.env.example`; `OLLAMA_MODEL` defaults to `gemma4:e2b` for small machines). Hosted IDs
+`gemma-4-31b-it` and `gemma-4-26b-a4b-it` are listed in Google's "Run Gemma with the Gemini
+API" docs. Switching generations is one environment variable (`GEMMA_MODEL` / `OLLAMA_MODEL`) — but verify a new ID with your own key first, since Google documents
 newer IDs primarily against the native `:generateContent` API and
 OpenAI-compat coverage of Gemma 4 IDs is unconfirmed. No Gemma 4 is
 required for the challenge category: any Gemma — local, fine-tuned, or

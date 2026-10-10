@@ -16,7 +16,23 @@ services:
         sync: false
       - key: ELEVEN_VOICE_ID
         sync: false
+      # LLM_PROVIDER / GEMMA_API_KEY are set in the Render dashboard (sync: false).
+      # The template narrator is the automatic fallback if the model call fails.
       - key: LLM_PROVIDER
-        value: template
+        sync: false
+      - key: GEMMA_API_KEY
+        sync: false
+      - key: GEMMA3_MODEL
+        sync: false
+      - key: GEMMA4_MODEL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_MODEL
+        sync: false
       - key: SKYWHISPER_EPHEMERIS
         value: de421.bsp

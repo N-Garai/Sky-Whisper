@@ -88,7 +88,7 @@ export default function App() {
   const hasPack = packData !== null;
 
   return (
-    <div className={`relative min-h-dvh bg-abyss ${redShift ? 'red-shift' : ''}`}>
+    <div className={`relative min-h-dvh bg-[#030508] ${redShift ? 'red-shift' : ''}`}>
       {/* ————— dynamic deep-space background ————— */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
         <DynamicSpaceBackground />

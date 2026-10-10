@@ -30,14 +30,16 @@ def snapshot():
 
 
 def grounded_text(snapshot) -> str:
+    """Grounded text sized to the default 90 s budget (~217 words)."""
     facts = snapshot_facts(snapshot)
     illum = int(round(facts["moon.illumination_pct"]))
     fists = int(facts["moon.fists"])
+    filler = " ".join(["the sky is patient and the night is calm"] * 22)
     return (
         f" Tonight the moon is {illum} percent lit. "
         f"Find it {fists} fists above the horizon. "
         "Take a slow breath, and let your eyes relax. "
-        "The stars are patient, and there is no hurry at all."
+        + filler + "."
     )
 
 
@@ -81,10 +83,7 @@ class TestOrchestrationOrder:
         from unittest.mock import patch
 
         monkeypatch.setattr(mastra_client, "is_available", lambda: True)
-        with patch.object(llm_provider, "_provider_config", return_value={
-            "provider": "openai", "base_url": "https://example.test",
-            "model": "gemma-3-4b-it", "api_key": "k",
-        }), patch.object(
+        with patch.object(llm_provider, "_chain", return_value=[{"name": "gemini-gemma4", "base_url": "https://example.test", "model": "gemma-4-26b-a4b-it", "api_key": "k"}]), patch.object(
             mastra_client, "narrate_via_mastra", return_value=grounded_text(snapshot)
         ), patch.object(llm_provider, "_chat") as chat:
             result = asyncio.run(llm_provider.narrate_with_model(snapshot))
@@ -98,10 +97,7 @@ class TestOrchestrationOrder:
 
         bad = "The moon is 47 percent lit and sits 92 fists above the horizon."
         monkeypatch.setattr(mastra_client, "is_available", lambda: True)
-        with patch.object(llm_provider, "_provider_config", return_value={
-            "provider": "openai", "base_url": "https://example.test",
-            "model": "gemma-3-4b-it", "api_key": "k",
-        }), patch.object(
+        with patch.object(llm_provider, "_chain", return_value=[{"name": "gemini-gemma4", "base_url": "https://example.test", "model": "gemma-4-26b-a4b-it", "api_key": "k"}]), patch.object(
             mastra_client, "narrate_via_mastra", return_value=bad
         ), patch.object(llm_provider, "_chat", return_value=None):
             result = asyncio.run(llm_provider.narrate_with_model(snapshot))
@@ -111,10 +107,7 @@ class TestOrchestrationOrder:
         from unittest.mock import patch
 
         monkeypatch.setattr(mastra_client, "is_available", lambda: True)
-        with patch.object(llm_provider, "_provider_config", return_value={
-            "provider": "openai", "base_url": "https://example.test",
-            "model": "gemma-3-4b-it", "api_key": "k",
-        }), patch.object(
+        with patch.object(llm_provider, "_chain", return_value=[{"name": "gemini-gemma4", "base_url": "https://example.test", "model": "gemma-4-26b-a4b-it", "api_key": "k"}]), patch.object(
             mastra_client, "narrate_via_mastra", return_value=None
         ), patch.object(llm_provider, "_chat", return_value=grounded_text(snapshot)):
             result = asyncio.run(llm_provider.narrate_with_model(snapshot))
