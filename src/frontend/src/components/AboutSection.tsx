@@ -1,13 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  motion,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from 'framer-motion';
-import { Eyebrow, Reveal, SplitText, GradientReveal } from './home/Constellation';
-import { ScrollReveal } from './ScrollReveal';
+import { useRef } from 'react';
+import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
+import { Eyebrow, SplitText, GradientReveal } from './home/Constellation';
 
 const CARDS = [
   {
@@ -49,61 +42,56 @@ const PROOF: Array<{ value: string; label: string }> = [
   { value: '0', label: 'Calls In The Field' },
 ];
 
+/**
+ * One principle card with scroll-linked reveal.
+ *
+ * The card fades and rises as its top edge enters the lower part of the
+ * viewport, sits fully visible in the middle, and fades + sinks again as it
+ * leaves the top. Progress is driven by the card's own scroll position
+ * (useScroll on its element), so it reverses correctly when scrolling up —
+ * no IntersectionObserver, no one-shot triggers.
+ */
 function PrincipleCard({ n, title, copy, cta = false }: { n: string; title: string; copy: string; cta?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  // 0 = card just entering at the bottom, 0.5 = centred, 1 = leaving at the top.
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
+  const opacity = useTransform(scrollYProgress, [0, 0.28, 0.72, 1], [0, 1, 1, 0]);
+  const y = useTransform(scrollYProgress, [0, 0.28, 0.72, 1], [70, 0, 0, -50]);
+  const blur = useTransform(scrollYProgress, [0, 0.28, 0.72, 1], [10, 0, 0, 10]);
+  const filter = useTransform(blur, (b) => `blur(${b}px)`);
+
   return (
-    <ScrollReveal direction="up" bidirectional>
-      <article className="panel flex h-full min-h-[22rem] w-[80vw] shrink-0 flex-col overflow-hidden p-7 sm:w-[26rem] sm:p-9">
+    <motion.div ref={ref} style={reduce ? undefined : { opacity, y, filter }} className="min-w-0">
+      <article className="panel flex min-w-0 flex-col overflow-hidden p-7 sm:p-9">
         <div className="mb-5 flex items-center gap-4">
           <span className="num text-sm tracking-[0.3em] text-amber-300/80">{n}</span>
           <span className="h-px flex-1 bg-gradient-to-r from-amber-300/25 to-transparent" />
         </div>
         <h3 className="h-display mb-4 text-2xl text-white/92 sm:text-[1.7rem]">{title}</h3>
-        <p className="copy text-sm leading-relaxed sm:text-[0.95rem]">{copy}</p>
+        <p className="copy text-sm leading-relaxed sm:text-[0.92rem]">{copy}</p>
         {cta && (
-          <motion.a
+          <a
             href="#prepare"
             onClick={(e) => {
               e.preventDefault();
               document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth' });
             }}
             className="btn btn-ghost mt-8 w-fit !px-5 !py-2.5 !text-sm"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
           >
             Try It Tonight
-          </motion.a>
+          </a>
         )}
       </article>
-    </ScrollReveal>
+    </motion.div>
   );
 }
 
 export function AboutSection() {
-  const reduce = useReducedMotion();
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [shift, setShift] = useState(0);
-  const [pct, setPct] = useState(0);
-
-  const { scrollYProgress } = useScroll({ target: wrapRef, offset: ['start start', 'end end'] });
-  const x = useTransform(scrollYProgress, [0, 1], [0, -shift]);
-  useMotionValueEvent(scrollYProgress, 'change', (v) => setPct(Math.round(v * 100)));
-
-  useEffect(() => {
-    const measure = () => {
-      const track = trackRef.current;
-      if (!track) return;
-      setShift(Math.max(0, track.scrollWidth - window.innerWidth));
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
-
-  /* Reduced motion: a calm vertical stack, no pinning, no driven motion. */
-  if (reduce) {
-    return (
-      <section id="about" className="section">
+  return (
+    <>
+      {/* ————— header + intro ————— */}
+      <section id="about" className="section !pb-6 sm:!pb-10">
         <div className="shell">
           <Eyebrow>About SkyWhisper</Eyebrow>
           <h2 className="h-section mt-5 max-w-3xl text-white/92">
@@ -116,116 +104,49 @@ export function AboutSection() {
             carry it outside, and listen with the phone face-down — no glowing rectangle between
             you and the stars.
           </p>
-          <div className="mt-10 space-y-5">
-            {CARDS.map((c) => (
-              <div key={c.n} className="panel h-auto w-full p-7">
-                <div className="mb-4 flex items-center gap-4">
-                  <span className="num text-sm tracking-[0.3em] text-amber-300/80">{c.n}</span>
-                  <span className="h-px flex-1 bg-gradient-to-r from-amber-300/25 to-transparent" />
-                </div>
-                <h3 className="h-display mb-3 text-2xl text-white/92">{c.title}</h3>
-                <p className="copy text-sm leading-relaxed">{c.copy}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
-    );
-  }
 
-  return (
-    <>
-      {/* ————— header + intro ————— */}
-      <section id="about" className="section !pb-10 sm:!pb-14">
+      {/* ————— principles: each card fades in on scroll and fades out going up ————— */}
+      <section className="section !pt-4 sm:!pt-6">
         <div className="shell">
-          <Eyebrow>About SkyWhisper</Eyebrow>
-          <h2 className="h-section mt-5 max-w-3xl text-white/92">
-            <SplitText text="The Sky, With" as="span" />
-            <br />
-            <GradientReveal text="the Screen Removed." delay={0.14} className="font-accent" />
-          </h2>
-          <Reveal delay={0.12} className="mt-7">
-            <p className="lead max-w-3xl text-base sm:text-lg">
-              SkyWhisper is an audio field guide for the night sky. Prepare a narration at home,
-              carry it outside, and listen with the phone face-down — no glowing rectangle between
-              you and the stars.
-            </p>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ————— pinned horizontal glide: keep scrolling, the archive moves sideways ————— */}
-      <div ref={wrapRef} className="relative h-[320vh]">
-        <div className="sticky top-0 flex h-[100svh] flex-col justify-center gap-7 overflow-hidden sm:gap-9">
-          <div className="shell flex items-end justify-between gap-6">
-            <p className="font-mono text-[0.62rem] uppercase tracking-[0.3em] text-amber-300/80">
-              The Principles
-            </p>
-            <p className="num font-mono text-[0.62rem] tracking-[0.2em] text-white/40 tabular-nums">
-              {String(pct).padStart(2, '0')}% ✦ Principles Timeline
-            </p>
-          </div>
-
-          <div
-            ref={trackRef}
-            className="flex w-max items-stretch gap-5 pr-[12vw] sm:gap-7"
-            style={{ paddingLeft: 'max(2rem, calc((100vw - 73.75rem) / 2 + 2rem))' }}
-          >
+          <p className="mb-8 font-mono text-[0.62rem] uppercase tracking-[0.3em] text-amber-300/80">The Principles</p>
+          <div className="grid gap-6 md:grid-cols-2">
             {CARDS.map((c) => (
-              <motion.div key={c.n} style={{ x }} className="flex">
-                <PrincipleCard n={c.n} title={c.title} copy={c.copy} cta={c.cta} />
-              </motion.div>
+              <PrincipleCard key={c.n} n={c.n} title={c.title} copy={c.copy} cta={c.cta} />
             ))}
           </div>
-
-          <div className="shell">
-            <div className="h-px w-full bg-white/[0.08]">
-              <motion.div className="h-px origin-left bg-amber-300/80" style={{ scaleX: scrollYProgress }} />
-            </div>
-          </div>
-
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#04060f] via-[#04060f]/70 to-transparent sm:w-40" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#04060f] via-[#04060f]/70 to-transparent sm:w-40" />
         </div>
-      </div>
+      </section>
 
       {/* ————— chart: proof + facts, one organized panel ————— */}
-      <section className="section !pt-10 sm:!pt-14">
+      <section className="section !pt-6 sm:!pt-8">
         <div className="shell">
-          <Reveal>
-            <div className="panel p-6 sm:p-10">
-              <p className="font-mono text-[0.62rem] uppercase tracking-[0.3em] text-amber-300/80">
-                Measured, Not Promised
-              </p>
-              <dl className="mt-6 grid grid-cols-3 divide-x divide-white/[0.08]">
-                {PROOF.map((p) => (
-                  <div key={p.label} className="min-w-0 px-4 first:pl-0 last:pr-0 sm:px-7">
-                    <dd className="font-display text-xl font-bold text-amber-300 sm:text-3xl">
-                      {p.value}
-                    </dd>
-                    <dt className="mt-2 font-mono text-[0.55rem] uppercase leading-relaxed tracking-[0.16em] text-white/40 sm:text-[0.6rem]">
-                      {p.label}
-                    </dt>
-                  </div>
-                ))}
-              </dl>
-              <dl className="mt-8 divide-y divide-white/[0.07] border-t border-white/[0.07]">
-                {FACTS.map(([k, v]) => (
-                  <div
-                    key={k}
-                    className="grid grid-cols-[8rem_1fr] gap-3 py-3.5 sm:grid-cols-[11rem_1fr] sm:gap-4"
-                  >
-                    <dt className="min-w-0 font-mono text-[0.6rem] uppercase leading-relaxed tracking-[0.18em] text-amber-300/70">
-                      {k}
-                    </dt>
-                    <dd className="min-w-0 break-words text-sm leading-relaxed text-white/60">
-                      {v}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </Reveal>
+          <div className="panel p-6 sm:p-10">
+            <p className="font-mono text-[0.62rem] uppercase tracking-[0.3em] text-amber-300/80">
+              Measured, Not Promised
+            </p>
+            <dl className="mt-6 grid grid-cols-3 divide-x divide-white/[0.08]">
+              {PROOF.map((p) => (
+                <div key={p.label} className="min-w-0 px-4 first:pl-0 last:pr-0 sm:px-7">
+                  <dd className="font-display text-xl font-bold text-amber-300 sm:text-3xl">{p.value}</dd>
+                  <dt className="mt-2 font-mono text-[0.55rem] uppercase leading-relaxed tracking-[0.16em] text-white/40 sm:text-[0.6rem]">
+                    {p.label}
+                  </dt>
+                </div>
+              ))}
+            </dl>
+            <dl className="mt-8 divide-y divide-white/[0.07] border-t border-white/[0.07]">
+              {FACTS.map(([k, v]) => (
+                <div key={k} className="grid grid-cols-[8rem_1fr] gap-3 py-3.5 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                  <dt className="min-w-0 font-mono text-[0.6rem] uppercase leading-relaxed tracking-[0.18em] text-amber-300/70">
+                    {k}
+                  </dt>
+                  <dd className="min-w-0 break-words text-sm leading-relaxed text-white/60">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
       </section>
     </>

@@ -28,11 +28,10 @@ function RowCard({
   const reduce = useReducedMotion();
   return (
     <motion.article
-      initial={reduce ? { opacity: 1, y: 0 } : { opacity: 0, y: 38, filter: 'blur(8px)' }}
-      whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      initial={reduce ? { opacity: 1, y: 0 } : { opacity: 0, y: 38 }}
+      whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-10% 0px' }}
       transition={{ duration: 0.9, ease: EASE, delay: reduce ? 0 : index * 0.14 }}
-      whileHover={{ y: -5 }}
       className={`group panel min-w-0 overflow-hidden p-8 sm:p-9 ${className}`}
     >
       {children}
@@ -433,7 +432,7 @@ export function HomePage({
         <div className="shell">
           <Reveal className="mx-auto max-w-2xl text-center">
             <div className="rule-shimmer mx-auto mb-10 w-full max-w-xs" />
-            <blockquote className="h-display text-white/78" style={{ fontSize: 'var(--fs-h3)' }}>
+            <blockquote className="h-display text-white/78 leading-[1.3]" style={{ fontSize: 'clamp(1.2rem, 2vw, 1.45rem)' }}>
               &ldquo;Your eyes need twenty minutes of darkness.{' '}
               <GradientReveal
                 text="One glance at a bright screen resets them."

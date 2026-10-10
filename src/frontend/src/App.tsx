@@ -120,7 +120,7 @@ export default function App() {
                     </h2>
                   </Reveal>
                   <Reveal delay={0.1} className="mt-7">
-                    <p className="lead max-w-md">
+                    <p className="lead max-w-md leading-[1.8]">
                       Pick where you&rsquo;ll be standing. The server works out exactly what will be
                       overhead tonight — Sun, Moon, planets, named stars — writes the narration, and
                       seals it into a pack you can carry with no signal at all.

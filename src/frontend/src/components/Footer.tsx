@@ -27,7 +27,7 @@ export function Footer() {
                 skywhisper
               </span>
             </div>
-            <p className="lead mt-6 max-w-sm text-base sm:text-lg">
+            <p className="lead mt-6 max-w-sm text-sm sm:text-[0.95rem]">
               Screenless astronomy. Prepare the narration at home, then go
               outside, put the phone down, and let the sky speak for itself.
             </p>
