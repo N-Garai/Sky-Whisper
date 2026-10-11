@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import { WAKE_WORDS } from '../lib/voiceIntent';
-import { workingChime, doneChime, errorChime } from '../lib/chimes';
+import { workingChime, doneChime, errorChime, ensureAudio } from '../lib/chimes';
 
 interface VoiceBarProps {
   onDescribe: () => void;
@@ -65,6 +65,7 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
   const [ask, setAsk] = useState<AskState>('idle');
   const [reply, setReply] = useState<string | null>(null);
   const [replyAudio, setReplyAudio] = useState<string | null>(null);
+  const [failReason, setFailReason] = useState<string | null>(null);
   const replyAudioRef = useRef<HTMLAudioElement>(null);
   // Last exchange, so follow-ups ("tell me more about Jupiter") land in
   // context instead of starting cold each time.
@@ -82,6 +83,8 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
     setAsk('thinking');
     setReply(null);
     setReplyAudio(null);
+    setFailReason(null);
+    await ensureAudio();
     workingChime();
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 100000);
@@ -108,10 +111,19 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
         lastExchange.current = { q: query, a: String(data.reply).slice(0, 600) };
       } else {
         errorChime();
+        const first = data?.generation?.attempts?.[0];
+        setFailReason(
+          first ? `${first.stage}: ${first.reason}` : 'empty answer from the server',
+        );
       }
-    } catch {
+    } catch (err) {
       setAsk('error');
       errorChime();
+      setFailReason(
+        err instanceof DOMException && err.name === 'AbortError'
+          ? 'timed out after 100s — the server was still working; try again'
+          : 'request failed — check connection and retry',
+      );
     } finally {
       window.clearTimeout(timer);
     }
@@ -187,7 +199,12 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
                 )}
                 {ask === 'thinking' && <p className="text-xs text-amber-200/80">Asking the agent…</p>}
                 {ask === 'error' && (
-                  <p className="text-xs text-red-300/80">The agent didn&rsquo;t answer — try again.</p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-red-300/80">The agent didn&rsquo;t answer — try again.</p>
+                    {failReason && (
+                      <p className="text-[11px] leading-relaxed text-white/40 break-words">{failReason}</p>
+                    )}
+                  </div>
                 )}
                 {reply && <p className="text-xs text-white/65 leading-relaxed line-clamp-4">{reply}</p>}
                 <FollowUpBox onAsk={(q) => void askAgent(q)} />

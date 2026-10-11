@@ -346,7 +346,7 @@ async def voice_answer(body: dict) -> JSONResponse:
     if not transcript.strip():
         raise HTTPException(status_code=422, detail="transcript required")
 
-    from src.backend.narration.llm_provider import narrate_with_model
+    from src.backend.narration.llm_provider import narrate_with_model, template_generation
 
     req = PackRequest(latitude=lat, longitude=lon, timestamp=ts)
     try:
@@ -375,9 +375,11 @@ async def voice_answer(body: dict) -> JSONResponse:
     result = await narrate_with_model(snap, 30, extra_context=question, budget_s=80.0)
     if result is not None:
         text, provider, model = result["script"], result["provider"], result["model"]
+        generation = result.get("generation")
     else:
         fallback = build_script(snap, 30)
         text, provider, model = fallback["script"], "template", "template"
+        generation = template_generation()
 
     audio_path: str | None = None
     tts = await synthesize(text)
@@ -391,6 +393,7 @@ async def voice_answer(body: dict) -> JSONResponse:
         "word_count": len(text.split()),
         "provider": provider,
         "model": model,
+        "generation": generation,
         "audio": tts.to_dict(),
         "audioPath": audio_path,
     })

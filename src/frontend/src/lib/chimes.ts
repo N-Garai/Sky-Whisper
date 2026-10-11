@@ -16,10 +16,26 @@ function audio(): AudioContext | null {
       if (!AC) return null;
       ctx = new AC();
     }
-    if (ctx.state === 'suspended') void ctx.resume();
     return ctx;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Unlock audio for a gesture handler: creates the context and waits until
+ * it is actually running. Fire-and-forget tones scheduled while suspended
+ * play silently — the exact "no working sound" bug. Always await this
+ * before the first chime in a tap/keypress handler.
+ */
+export async function ensureAudio(): Promise<boolean> {
+  const ac = audio();
+  if (!ac) return false;
+  try {
+    if (ac.state === 'suspended') await ac.resume();
+    return ac.state === 'running';
+  } catch {
+    return false;
   }
 }
 
