@@ -155,9 +155,13 @@ async def _stage_snapshot(req: PackRequest):
         raise HTTPException(status_code=500, detail=f"ephemeris error: {exc}")
 
     # Weather is best-effort: a failure never blocks the pack.
+    # Cloud cover gets grid-snapped coordinates (0.5° ≈ 55 km — irrelevant
+    # for clouds); the ephemeris above always uses the exact fix.
     try:
         date_str = req.timestamp[:10]
-        weather = await get_cloud_cover(req.latitude, req.longitude, date_str)
+        weather = await get_cloud_cover(
+            round(req.latitude * 2) / 2, round(req.longitude * 2) / 2, date_str
+        )
         snap.weather.cloud_pct = weather["cloud_pct"]
         snap.weather.label = weather["label"]
     except Exception:

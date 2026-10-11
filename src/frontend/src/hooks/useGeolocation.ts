@@ -53,10 +53,14 @@ export function useGeolocation({ enabled = true }: { enabled?: boolean } = {}): 
 
     const succeed = (pos: GeolocationPosition) => {
       if (!current()) return;
+      // Full device precision. The server computes the snapshot from these
+      // exact coordinates and snaps ONLY its cache key to a 0.5° grid —
+      // rounding here would blur the astronomy and make a good fix look
+      // like the sample defaults.
       setState((s) => ({
         ...s,
-        lat: Math.round(pos.coords.latitude * 2) / 2, // 0.5° grid
-        lon: Math.round(pos.coords.longitude * 2) / 2,
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
         error: null,
         loading: false,
         retrying: false,

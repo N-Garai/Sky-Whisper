@@ -234,7 +234,7 @@ export default function App() {
 
                   {geo.lat !== null && geo.lon !== null ? (
                     <Reveal delay={0.16} className="mt-6">
-                      <p className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45" title="Snapped to the 0.5° pack grid">
+                      <p className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45" title="Your device GPS fix">
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
                           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
