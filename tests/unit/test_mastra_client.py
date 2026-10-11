@@ -135,3 +135,83 @@ class TestOrchestrationOrder:
         assert seen["MASTRA_BASE_URL"] == "https://api.groq.com/openai/v1"
         assert seen["MASTRA_API_KEY"] == "g"
         chat.assert_not_called()
+
+    def test_hanging_subprocess_is_killed(self, monkeypatch):
+        """A stuck harness can never become an orphan: timeout kills it."""
+        import asyncio as aio
+        import time as time_mod
+
+        killed = {"n": 0}
+
+        class HangingProc:
+            returncode = None
+
+            async def communicate(self, *a):
+                await aio.sleep(30)
+                return (b"", b"")
+
+            def kill(self):
+                killed["n"] += 1
+                self.returncode = -9
+
+            async def wait(self):
+                return self.returncode
+
+        async def fake_exec(*a, **k):
+            return HangingProc()
+
+        monkeypatch.setattr(mastra_client, "is_available", lambda: True)
+        # Patch at the asyncio module (reverted after the test): the point is
+        # that OUR code kills whatever handle the spawn returns.
+        monkeypatch.setattr(aio, "create_subprocess_exec", fake_exec)
+        t0 = time_mod.monotonic()
+        result = asyncio.run(narrate_via_mastra({}, 90, 218, timeout=0.5))
+        dt = time_mod.monotonic() - t0
+        assert result is None
+        assert killed["n"] == 1
+        assert dt < 15
+
+    def test_mastra_tried_once_per_pack(self, snapshot, monkeypatch):
+        """One harness spawn per pack: later rungs go direct, never respawn."""
+        from unittest.mock import patch
+
+        calls: list = []
+        monkeypatch.setattr(mastra_client, "is_available", lambda: True)
+
+        async def fake_mastra(*args, **kwargs):
+            calls.append((kwargs.get("env_overrides") or {}).get("MASTRA_MODEL_ID"))
+            return None
+
+        chain = [
+            {"name": "gemini-gemma3", "base_url": "https://example.test",
+             "model": "gemma-3-27b-it", "api_key": "k"},
+            {"name": "gemini-gemma4", "base_url": "https://example.test",
+             "model": "gemma-4-26b-a4b-it", "api_key": "k"},
+        ]
+        with patch.object(llm_provider, "_chain", return_value=chain), patch.object(
+            mastra_client, "narrate_via_mastra", side_effect=fake_mastra
+        ), patch.object(llm_provider, "_chat", return_value=grounded_text(snapshot)):
+            result = asyncio.run(llm_provider.narrate_with_model(snapshot))
+        assert result is not None
+        assert result["orchestrator"] == "direct"
+        assert calls == ["gemma-3-27b-it"]
+
+    def test_narration_budget_skips_remaining_rungs(self, snapshot, monkeypatch):
+        """Past the global budget the template answers instead of hanging."""
+        from unittest.mock import patch
+
+        monkeypatch.setattr(llm_provider, "NARRATION_BUDGET_S", -1)
+        chain = [
+            {"name": "gemini-gemma3", "base_url": "https://example.test",
+             "model": "gemma-3-27b-it", "api_key": "k"},
+            {"name": "groq", "base_url": "https://example.test",
+             "model": "openai/gpt-oss-120b", "api_key": "g"},
+        ]
+        with patch.object(llm_provider, "_chain", return_value=chain), patch.object(
+            llm_provider, "_chat") as chat:
+            result = asyncio.run(llm_provider.narrate_with_model(snapshot))
+        assert result is None
+        chat.assert_not_called()
+        attempts = llm_provider.last_attempts()
+        assert len(attempts) == 2
+        assert all("budget" in a["reason"] for a in attempts)

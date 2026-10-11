@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
 interface PrepareCardProps {
@@ -7,9 +7,6 @@ interface PrepareCardProps {
   stage: string;
   initialLat?: number | null;
   initialLon?: number | null;
-  /** M1 zero-tap prep: auto-submit once shortly after coordinates arrive,
-      unless the user types first. Parent disables after the first pack. */
-  autoPrepare?: boolean;
 }
 
 export const PREPARE_STAGES = [
@@ -33,7 +30,7 @@ const DURATION_WORDS: Record<number, string> = {
   120: 'Two Minutes',
 };
 
-export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon, autoPrepare = false }: PrepareCardProps) {
+export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon }: PrepareCardProps) {
   const [lat, setLat] = useState('22.57');
   const [lon, setLon] = useState('88.36');
   const [duration, setDuration] = useState(90);
@@ -61,25 +58,10 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon,
     onPrepare({ lat: latNum, lon: lonNum, timestamp, duration });
   };
 
-  // M1: fire once, shortly after a REAL geolocation fix arrives — never
-  // on the placeholder defaults. Any keystroke sets touched and cancels this.
-  const autoFired = useRef(false);
-  const hasFix = initialLat !== null && initialLat !== undefined &&
-                 initialLon !== null && initialLon !== undefined;
-  useEffect(() => {
-    if (!autoPrepare || autoFired.current || touched || loading) return;
-    if (!hasFix) return;
-    if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return;
-    const timer = window.setTimeout(() => {
-      if (!autoFired.current) {
-        autoFired.current = true;
-        handleSubmit();
-      }
-    }, 1500);
-    return () => window.clearTimeout(timer);
-    // handleSubmit reads latest state; guard refs prevent refires.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPrepare, touched, loading, lat, lon, initialLat, initialLon]);
+  // Preparation starts ONLY from an explicit user act: the button below
+  // or a voice "describe the sky" command. Never automatically — not on
+  // mount, not on geolocation fix. (An earlier auto-fire on defaults burned
+  // packs for the wrong city; removed deliberately.)
 
   const activeStage = PREPARE_STAGES.indexOf(stage);
 

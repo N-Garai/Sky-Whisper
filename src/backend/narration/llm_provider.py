@@ -32,6 +32,10 @@ from src.backend.narration.template_narrator import (
 )
 from src.shared.sky_snapshot import SkySnapshot
 
+# Hard ceiling for the whole model walk (all rungs, both paths). Past this
+# the template answers — a slow narration must never become no narration.
+NARRATION_BUDGET_S = 150.0
+
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 GROQ_BASE = "https://api.groq.com/openai/v1"
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
@@ -280,14 +284,20 @@ async def narrate_with_model(
     """Walk the model chain. Returns the first validated transcript, or None
     so the caller uses the template narrator.
 
-    `extra_context` (a listener question) is honored first by every path,
-    including the Mastra workflow. The caller can read the reasons from
-    `last_attempts()` after a None result. Mastra is tried first when its
-    harness is available; its output still goes through the same length
-    and validation gates.
+    Bounded end to end: the whole walk (all rungs, both paths) must finish
+    inside NARRATION_BUDGET_S, after which the template answers. Without a
+    global budget, stacked provider timeouts on a small instance add up to
+    a pack that never resolves. `extra_context` (a listener question) is
+    honored first by every path, including the Mastra workflow. The caller
+    can read the reasons from `last_attempts()` after a None result. Mastra
+    is tried once, on the first rung; its output still goes through the
+    same length and validation gates.
     """
+    import time
+
     global _LAST_ATTEMPTS
     _LAST_ATTEMPTS = []
+    started = time.monotonic()
     stages = _chain()
     if not stages:
         return None
@@ -315,7 +325,15 @@ async def narrate_with_model(
             script["bodies_mentioned"] = details["bodies_mentioned"]
         return script
 
+    # One harness spawn per pack: Node cold-start is the most expensive
+    # step on a small instance, so Mastra rides the first rung only.
+    mastra_pending = mastra_up
+
     for cfg in stages:
+        if time.monotonic() - started > NARRATION_BUDGET_S:
+            attempts.append({"stage": cfg["name"], "status": "skipped",
+                             "reason": f"narration budget ({NARRATION_BUDGET_S}s) exhausted"})
+            continue
         if cfg["model"] in tried_models:
             attempts.append({"stage": cfg["name"], "status": "skipped",
                              "reason": "same model already tried"})
@@ -324,7 +342,8 @@ async def narrate_with_model(
 
         # Path 1 — Mastra workflow for this rung (facts -> agent -> validate),
         # pinned to the rung's endpoint via environment overrides.
-        if mastra_up:
+        if mastra_pending:
+            mastra_pending = False
             text = await narrate_via_mastra(
                 facts, duration_seconds, budget,
                 env_overrides={

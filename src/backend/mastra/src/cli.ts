@@ -111,6 +111,13 @@ async function selftest(): Promise<void> {
 }
 
 async function narrate(): Promise<void> {
+  // Hard backstop: never outlive the Python caller's timeout, so a stalled
+  // provider cannot leave an orphaned Node process holding memory.
+  // (Python kills on timeout too; this covers kill failures.)
+  const hardKill = setTimeout(() => {
+    process.stdout.write(JSON.stringify({ error: 'harness time budget exhausted' }) + '\n');
+    process.exit(2);
+  }, 60000);
   const cfg = resolveProvider();
   if (!cfg) {
     process.stdout.write(JSON.stringify({ error: 'no model provider configured' }) + '\n');
@@ -151,6 +158,7 @@ async function narrate(): Promise<void> {
     const output = result.status === 'success' ? result.result : null;
     const text = typeof output?.text === 'string' ? output.text : null;
     if (typeof text === 'string' && text.length >= 120) {
+      clearTimeout(hardKill);
       process.stdout.write(JSON.stringify({
         text,
         bodies_mentioned: Array.isArray((output as any)?.bodiesMentioned)

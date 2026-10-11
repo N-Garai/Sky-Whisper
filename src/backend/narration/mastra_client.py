@@ -77,8 +77,28 @@ async def narrate_via_mastra(
             stderr=asyncio.subprocess.DEVNULL,
             env=env,
         )
-        out, _ = await asyncio.wait_for(proc.communicate(payload.encode("utf-8")), timeout)
     except Exception:
+        return None
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(payload.encode("utf-8")), timeout)
+    except (asyncio.TimeoutError, TimeoutError):
+        # The child would otherwise outlive us holding ~200 MB: kill it.
+        # (The CLI also self-terminates at 60 s; this is the backstop.)
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except Exception:
+            pass
+        _LAST_DETAILS = {}
+        return None
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
         return None
     if proc.returncode != 0:
         _LAST_DETAILS = {}

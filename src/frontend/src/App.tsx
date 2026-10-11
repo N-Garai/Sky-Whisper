@@ -226,7 +226,7 @@ export default function App() {
                     </p>
                   </Reveal>
 
-                  {geo.lat !== null && geo.lon !== null && (
+                  {geo.lat !== null && geo.lon !== null ? (
                     <Reveal delay={0.16} className="mt-6">
                       <p className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45">
                         <span className="relative flex h-1.5 w-1.5">
@@ -235,6 +235,34 @@ export default function App() {
                         </span>
                         Location Detected · {geo.lat.toFixed(2)}, {geo.lon.toFixed(2)}
                       </p>
+                    </Reveal>
+                  ) : (
+                    <Reveal delay={0.16} className="mt-6">
+                      <div className="inline-flex flex-wrap items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
+                        <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                          <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${geo.loading ? 'bg-amber-300 animate-pulse' : 'bg-white/30'}`} />
+                        </span>
+                        <p className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45">
+                          {geo.loading
+                            ? 'Locating you…'
+                            : geo.error === 'permission denied'
+                              ? 'Location blocked — using defaults'
+                              : 'No GPS fix — using defaults'}
+                        </p>
+                        {!geo.loading && (
+                          <button
+                            onClick={() => geo.request()}
+                            className="rounded-full border border-amber-400/40 px-3 py-1 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-amber-300 hover:bg-amber-400/10 transition-colors"
+                          >
+                            Retry GPS
+                          </button>
+                        )}
+                      </div>
+                      {!geo.loading && (
+                        <p className="mt-2 text-[11px] text-white/35">
+                          Allow location in the browser address bar, or type coordinates below.
+                        </p>
+                      )}
                     </Reveal>
                   )}
 
@@ -245,7 +273,6 @@ export default function App() {
                       stage={stage}
                       initialLat={geo.lat}
                       initialLon={geo.lon}
-                      autoPrepare={!hasPack}
                     />
                   </Reveal>
 

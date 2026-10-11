@@ -35,11 +35,17 @@ export function useGeolocation({ enabled = true }: { enabled?: boolean } = {}): 
         }));
       },
       (err) => {
+        const reason =
+          err.code === err.PERMISSION_DENIED
+            ? 'permission denied'
+            : err.code === err.TIMEOUT
+              ? 'timed out'
+              : 'unavailable';
         setState((s) => ({
           ...s,
           lat: null,
           lon: null,
-          error: err.code === err.PERMISSION_DENIED ? 'permission denied' : null,
+          error: reason,
           loading: false,
         }));
       },
