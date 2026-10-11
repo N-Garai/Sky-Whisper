@@ -15,7 +15,8 @@ Every load-bearing piece is open source or open weight. This is the audit.
 | Frontend | [React](https://react.dev/) 19 | MIT | UI |
 | Build | [Vite](https://vite.dev/) + [esbuild](https://esbuild.github.io/) | MIT | Frontend bundle |
 | Styling | [Tailwind CSS](https://tailwindcss.com/) v4 | MIT | Design system |
-| Animation | [Framer Motion](https://motion.dev/) | MIT | Starfield, transitions, ritual progress |
+| Animation | [Framer Motion](https://motion.dev/) | MIT | Transitions, ritual progress, scroll reveals |
+| 3D background | [Three.js](https://threejs.org/) | MIT | Living deep-space backdrop canvas |
 | Testing | [pytest](https://docs.pytest.org/), [astropy](https://www.astropy.org/) | MIT, BSD-3-Clause | Golden-value tests + independent cross-check |
 
 ## Data sources
@@ -38,22 +39,21 @@ facts/validator tools, model routed to the hosted endpoint or local
 Ollama), and the result passes the same Python validator before audio.
 The model never computes coordinates; it receives the finished snapshot.
 
-Model currency: the default is **Gemma 4** (`gemma-4-26b-a4b-it`, set in code and in
-`.env.example`; `OLLAMA_MODEL` defaults to `gemma4:e2b` for small machines). Hosted IDs
-`gemma-4-31b-it` and `gemma-4-26b-a4b-it` are listed in Google's "Run Gemma with the Gemini
-API" docs. Switching generations is one environment variable (`GEMMA_MODEL` / `OLLAMA_MODEL`) — but verify a new ID with your own key first, since Google documents
-newer IDs primarily against the native `:generateContent` API and
-OpenAI-compat coverage of Gemma 4 IDs is unconfirmed. No Gemma 4 is
-required for the challenge category: any Gemma — local, fine-tuned, or
-hosted — qualifies.
+Model currency: the chain defaults to served, verified IDs — currently
+Gemma 4 on the first two rungs (`gemma-4-26b-a4b-it`, then `gemma-4-31b-it`),
+`openai/gpt-oss-120b` on Groq, `meta/llama-3.1-8b-instruct` on NVIDIA NIM —
+each overridable by environment, each rung carrying a fallback ID for when
+providers retire names (which they do, without warning). `OLLAMA_MODEL`
+defaults to `gemma4:e2b` for small machines. Verify any new ID with your own
+key first: Google documents newer IDs primarily against the native
+`:generateContent` API, and OpenAI-compat coverage is not guaranteed.
 
 ## Voice
 
 [ElevenLabs](https://elevenlabs.io/) is optional partner technology. When
 no key is configured the API returns an honest `audio.available: false`
-with the reason, never fabricated audio bytes. Attribution for the voice
-belongs in the product's own footer and README when the free tier is in
-use; verify current terms before shipping a credit line.
+with the reason, never fabricated audio bytes. No in-product attribution
+is currently displayed; verify current terms before shipping a credit line.
 
 ## Verification
 

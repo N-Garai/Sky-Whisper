@@ -50,7 +50,10 @@ export default function App() {
   const listenRef = useRef<HTMLDivElement>(null);
   // First-visit location gate: null = not asked yet (modal open).
   const [locChoice, setLocChoice] = useState<string | null>(() => storedLocChoice());
-  const geo = useGeolocation({ enabled: locChoice !== null });
+  // Only 'auto' arms background acquisition: manual/later users asked for
+  // no prompt, and the gate's tap issues its own request (see the hook —
+  // exactly one fix attempt per tap, no duplicate).
+  const geo = useGeolocation({ enabled: locChoice === 'auto' });
 
   // Register the service worker so the pack survives airplane mode.
   useEffect(() => {
@@ -231,7 +234,7 @@ export default function App() {
 
                   {geo.lat !== null && geo.lon !== null ? (
                     <Reveal delay={0.16} className="mt-6">
-                      <p className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45">
+                      <p className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45" title="Snapped to the 0.5° pack grid">
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
                           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -246,11 +249,15 @@ export default function App() {
                           <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${geo.loading ? 'bg-amber-300 animate-pulse' : 'bg-white/30'}`} />
                         </span>
                         <p className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/45">
-                          {geo.loading
+                          {geo.loading && !geo.retrying
                             ? 'Locating you…'
-                            : geo.error === 'permission denied'
-                              ? 'Location blocked — using defaults'
-                              : 'No GPS fix — using defaults'}
+                            : geo.retrying
+                              ? 'Slow fix — retrying with high accuracy…'
+                              : geo.error === 'permission denied'
+                                ? 'Location blocked — using defaults'
+                                : geo.error === 'unavailable'
+                                  ? 'No location source — using defaults'
+                                  : 'No GPS fix — using defaults'}
                         </p>
                         {!geo.loading && (
                         <div className="flex flex-wrap items-center gap-2">
@@ -270,9 +277,11 @@ export default function App() {
                         </div>
                       )}
                       </div>
-                      {!geo.loading && (
+                      {!geo.loading && !geo.retrying && (
                         <p className="mt-2 text-[11px] text-white/35">
-                          Allow location in the browser address bar, or type coordinates below.
+                          {geo.error === 'unavailable'
+                            ? 'The browser is allowed but the device gave no fix — check the OS location toggle, or type coordinates below.'
+                            : 'Allow location in the browser address bar, or type coordinates below.'}
                         </p>
                       )}
                     </Reveal>

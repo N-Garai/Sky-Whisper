@@ -117,7 +117,10 @@ Same request body as the snapshot endpoint. Response:
     "word_count": 127,
     "word_budget": 218,
     "warnings": [],
-    "fallback_used": true
+    "fallback_used": true,
+    "provider": "template",
+    "orchestrator": "template",
+    "generation": {"status": "template", "stage": "template", "attempts": []}
   },
   "audio": {
     "available": false,

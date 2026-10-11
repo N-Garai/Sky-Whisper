@@ -1,0 +1,18 @@
+%% Pack pipeline — snapshot, narration, audio. Mirrors routes.py stages:
+%% _stage_snapshot, _stage_narration, _stage_audio, served over POST once
+%% or streamed as SSE (snapshot, narration, audio, done).
+flowchart TB
+    subgraph net["Prepare — needs network, done at home"]
+        direction LR
+        REQ["Pack request<br/>lat, lon, time<br/>duration"] --> Q["Quantize time<br/>15-minute buckets"] --> SNAP["Snapshot stage<br/>ephemeris + weather<br/>+ satellite passes"] --> NARR["Narration stage<br/>model chain,<br/>else template"]
+    end
+    subgraph delv["Deliver — plays with no signal"]
+        direction LR
+        AUDIO["Audio stage<br/>ElevenLabs TTS<br/>or honest null"] --> CACHE[("Pack cache<br/>0.5° grid +<br/>chain signature")] --> PACK["Pack JSON + MP3<br/>snapshot + script<br/>+ provider record"] --> DL["Download at home<br/>IndexedDB +<br/>service worker"]
+    end
+    NARR --> AUDIO
+
+    classDef edge fill:#0b1022,stroke:#F5C97B,color:#E7ECF7;
+    classDef store fill:#131a38,stroke:#8B93A7,color:#E7ECF7;
+    class REQ,Q,SNAP,NARR,AUDIO,PACK,DL edge;
+    class CACHE,net,delv store;

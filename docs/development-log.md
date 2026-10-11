@@ -7,8 +7,8 @@ Honest record of what was built, what broke, and what was verified.
 ### What works
 
 - Ephemeris core: Sun, Moon, five planets, 18 named stars, 12 constellation
-  anchors. Computed by Skyfield from JPL DE421 (fallback) or DE440s (when
-  downloadable), cached on disk.
+  anchors. Computed by Skyfield from the JPL kernel named by
+  `SKYWHISPER_EPHEMERIS` (`de421.bsp` in production), cached on disk.
 - Snapshot endpoint returns a versioned `SkySnapshot` with USNO twilight
   bands, illumination fraction, and honest `visible` gating at 10° altitude.
 - Narration: deterministic template narrator producing spoken prose in
@@ -24,8 +24,20 @@ Honest record of what was built, what broke, and what was verified.
 - Frontend: React 19 + Vite + Tailwind v4 + Framer Motion PWA with an
   animated starfield, sky preview, prepare flow, player, red-shift mode,
   and a Media Session-ready listen page. Builds clean, typechecks clean.
-- 78 tests passing: pure math, snapshot + narration validation, and HTTP
-  integration with zero external calls.
+- 136 tests passing: pure math, snapshot and narration validation, chain
+  fallthrough and stage degradation, satellite propagation, Mastra bridge
+  contract and orchestration order, voice endpoints, and HTTP integration
+  with zero external calls.
+
+### Later additions
+
+- Ordered model fallback chain (Gemini → Groq → NVIDIA NIM → template)
+  with per-rung fallback IDs, per-rung and global time budgets, subprocess
+  cleanup so hung runs can never orphan memory, and a generation record on
+  every pack naming the winning rung or each failure reason.
+- Voice loop: keyword intents matched locally in the browser, free-form
+  questions answered by the chain with conversation memory, TTS replies
+  cached as MP3s, dark-compass pointer mode for aiming without light.
 
 
 ### Verification

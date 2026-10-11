@@ -1,0 +1,12 @@
+{
+  "name": "skywhisper-diagrams",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mermaid render toolchain for docs/. Run: npm run diagrams",
+  "scripts": {
+    "diagrams": "mmdc -i 01-architecture.mmd -o ../asset/architecture.png -w 1200 -H 1200 -b \"#04060f\" --configFile mermaid-config.json --puppeteerConfigFile puppeteer.json && mmdc -i 02-pack-pipeline.mmd -o ../asset/pack-pipeline.png -w 1200 -H 1200 -b \"#04060f\" --configFile mermaid-config.json --puppeteerConfigFile puppeteer.json && mmdc -i 03-model-chain.mmd -o ../asset/model-chain.png -w 1200 -H 1200 -b \"#04060f\" --configFile mermaid-config.json --puppeteerConfigFile puppeteer.json && mmdc -i 04-voice-loop.mmd -o ../asset/voice-loop.png -w 1200 -H 1200 -b \"#04060f\" --configFile mermaid-config.json --puppeteerConfigFile puppeteer.json && mmdc -i 05-offline-field.mmd -o ../asset/offline-field.png -w 1200 -H 1200 -b \"#04060f\" --configFile mermaid-config.json --puppeteerConfigFile puppeteer.json"
+  },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.0.0"
+  }
+}

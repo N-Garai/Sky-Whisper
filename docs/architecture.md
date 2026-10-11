@@ -9,7 +9,7 @@ before you go outside; the field artifact is an audio pack, not an app screen.
 src/
 ├── core/              # Pure astronomy math (no I/O, unit-testable in isolation)
 ├── backend/           # FastAPI server
-│   ├── api/           # Routes: /api/health, /api/sky/snapshot, /api/packs
+│   ├── api/           # Routes: snapshot, packs (+SSE stream), voice answers
 │   ├── core/          # Skyfield ephemeris → SkySnapshot (+ satellite passes)
 │   ├── narration/     # Template narrator, Mastra bridge, anti-hallucination validator
 │   ├── mastra/        # Mastra agent harness (facts → docent agent → validate workflow)
@@ -25,31 +25,57 @@ live outside it.
 ## Request flow
 
 ```
-client ──POST /api/packs──▶ routes.py
-                              │
-                              ▼
-                    core/astronomy.py      Skyfield ephemeris
-                              │            (deterministic, no LLM)
-                              ▼
-                       SkySnapshot          the single source of truth
-                              │
+client ──POST /api/packs ──▶ routes.py
+         or GET /api/packs/stream (same stages, streamed)
+                               │
+                               ▼
+                     core/astronomy.py      Skyfield ephemeris
+                               │            (deterministic, no LLM)
+                               ▼
+                        SkySnapshot          the single source of truth
+                               │
                ┌───────────────┴───────────────┐
                ▼                               ▼
-    services/weather.py              narration (orchestrated)
-    (best-effort)                    template narrator, always available
-    services/satellites.py           Mastra workflow when a model is
-    (TLE+SGP4, best-effort)          configured, else direct provider HTTP —
-                                     both gated by validate_narration()
-              │                               │
-              └───────────────┬───────────────┘
-                              ▼
-                     audio/tts.py            ElevenLabs, or honest null
-                              ▼
-                        pack JSON + MP3
-                              │
-                              ▼
-                    client Cache Storage / download
+    services/weather.py              narration chain (ordered)
+    services/satellites.py           Mastra workflow per rung, then
+    (both best-effort)               direct HTTPS — every number gated
+                                     by validate_narration(); template
+                                     fallback can never be skipped
+               │                               │
+               └───────────────┬───────────────┘
+                               ▼
+                      audio/tts.py            ElevenLabs, or honest null
+                               ▼
+                   pack JSON + MP3 (cached)
+                               │
+                               ▼
+                     client Cache Storage / download
 ```
+
+Timestamps floor to 15-minute buckets before compute, so requests minutes
+apart share one cache entry instead of rebuilding the same sky from zero.
+
+## The model chain
+
+Ordered rungs, first validated transcript wins: Gemini fast → Gemini
+large → Groq → NVIDIA NIM → template. Each rung carries a fallback model
+ID tried on 404/410-class errors (providers retire names without warning),
+each rung gets 55 seconds, and the whole walk gets 150 — past that the
+template answers rather than hanging. Every pack records which rung
+answered and why the others did not (`narration.provider`,
+`orchestrator`, `generation`), and the UI surfaces it. Voice answers run
+the same chain at a 30-second budget with an 80-second ceiling, carrying
+the listener's question and recent exchange as context.
+
+## Voice loop
+
+Mic tap → browser speech recognition → local keyword intents (describe,
+replay, pause, volume, wake) handled on-device → anything else substantial
+goes to `POST /api/voice/answer` → chain narration → TTS MP3 → playback,
+with the transcript always shown. Listening needs the screen on (a platform
+constraint, stated in the UI); playback survives screen-off via Media
+Session. A dark-compass overlay (compass + haptics + pitch, zero emitted
+light that matters) guides aiming without a visible screen.
 
 ## Separation of coordinates from narration
 
@@ -70,6 +96,49 @@ path that needs zero external services, so the pack always ships.
 Render's free tier provides one web service. The FastAPI process serves both
 `/api/*` and the built PWA from `src/frontend/dist`, so there is exactly one
 instance to run and one cold start to absorb.
+
+## Memory notes
+
+Serving footprint runs roughly 80–120 MB steady state: Python/FastAPI plus
+the memory-mapped ephemeris (the ~16 MB kernel contributes only a few MB
+resident). The Mastra harness spawns Node only while a model rung is
+running (~220 MB transient), so template-mode traffic never pays for it.
+One uvicorn worker, one harness spawn per pack, subprocesses killed on
+timeout — no worker-count multiplier, no orphan accumulation on 512 MB.
+
+## Diagrams
+
+Sources live in [code](code) (Mermaid, rendered with the toolchain in
+`code/package.json`); renders live in [asset](asset) as 1200×1200 PNGs.
+
+![System architecture](asset/architecture.png)
+
+One free web service: the browser PWA talks to FastAPI, which owns the
+deterministic core and fans out to best-effort weather, keyed TTS, and the
+model chain. Media lands on the ephemeral disk.
+
+![Pack pipeline](asset/pack-pipeline.png)
+
+Prepare needs network and happens at home; delivery plays with no signal.
+Snapshot, narration, then audio — over one POST or streamed as SSE stages.
+
+![Model fallback chain](asset/model-chain.png)
+
+First validated transcript wins; the template narrator is the unbreakable
+last rung. Each rung retries once with its fallback model ID on 404/410,
+because providers retire names without warning.
+
+![Voice loop](asset/voice-loop.png)
+
+Free browser speech-to-text, keyword intents matched locally, free-form
+questions answered by the chain with conversation memory.
+
+![Offline field night](asset/offline-field.png)
+
+The service worker precaches the shell; pack audio and transcripts are
+stale-while-revalidate. Free-form voice answers are server-side and
+ephemeral, so they stay home — the downloaded pack is the field
+deliverable.
 
 ## Verification
 

@@ -1,0 +1,19 @@
+{
+  "theme": "dark",
+  "themeVariables": {
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "fontSize": "19px",
+    "primaryColor": "#0b1022",
+    "primaryTextColor": "#E7ECF7",
+    "primaryBorderColor": "#F5C97B",
+    "lineColor": "#8B93A7",
+    "secondaryColor": "#131a38",
+    "tertiaryColor": "#04060f"
+  },
+  "flowchart": {
+    "nodeSpacing": 55,
+    "rankSpacing": 75,
+    "curve": "basis",
+    "padding": 12
+  }
+}

@@ -16,5 +16,6 @@ src/frontend/dist/
 src/frontend/node_modules/
 src/backend/mastra/node_modules/
 src/backend/mastra/dist/
+docs/code/node_modules/
 .kilo/
 *.tsbuildinfo

@@ -1,0 +1,19 @@
+%% Offline field night — prepare on Wi-Fi, listen with radios off.
+%% Mirrors sw.js: shell precached on install, /api/packs/* audio and
+%% transcripts stale-while-revalidate. Voice answers are server-side and
+%% ephemeral, so free-form Q and A stays home; the pack is the deliverable.
+flowchart TB
+    subgraph home["At home, on Wi-Fi"]
+        direction LR
+        OPEN1["Open the PWA<br/>shell precached<br/>on install"] --> PREP["Prepare a pack<br/>for tonight's<br/>location + time"] --> DLV["Download the pack<br/>JSON + MP3<br/>into IndexedDB"]
+    end
+    subgraph field["Outside, radios off"]
+        direction LR
+        OPEN2["Open the saved pack<br/>shell + audio<br/>from cache"] --> PLAY["Press play, pocket it<br/>lock-screen controls<br/>track metadata"] --> LIM["Free-form voice answers<br/>need network —<br/>pack audio plays offline"]
+    end
+    DLV --> OPEN2
+
+    classDef edge fill:#0b1022,stroke:#F5C97B,color:#E7ECF7;
+    classDef store fill:#131a38,stroke:#8B93A7,color:#E7ECF7;
+    class OPEN1,PREP,DLV,OPEN2,PLAY edge;
+    class LIM,home,field store;

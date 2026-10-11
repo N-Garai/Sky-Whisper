@@ -1,0 +1,25 @@
+%% System architecture — one free web service, deterministic core.
+%% Every edge below exists in code: routes.py mounts the built PWA and
+%% serves /api/*; astronomy.py reads local kernels; services fetch on
+%% schedules; narration calls providers only when keys are configured.
+flowchart TB
+    PWA["Browser PWA<br/>React + Vite + Tailwind<br/>offline pack cache"]
+    SVC["Single web service<br/>FastAPI + built PWA<br/>512 MB / 0.1 vCPU"]
+    EPH["Deterministic core<br/>Skyfield + JPL kernel<br/>SGP4 + cached TLE"]
+    WX["Open-Meteo<br/>cloud cover,<br/>best-effort"]
+    TTS["ElevenLabs TTS<br/>keyed, or honest null"]
+    MODELS["Model chain<br/>Gemini, Groq,<br/>NVIDIA NIM, Ollama"]
+    DISK[("Ephemeral tmp/<br/>packs + voice MP3s")]
+
+    PWA -->|"API: packs, stream, voice"| SVC
+    SVC -->|"serves dist/"| PWA
+    SVC --> EPH
+    SVC -.->|"rounded coords"| WX
+    SVC -->|"transcript"| TTS
+    SVC -->|"facts only,<br/>validated reply"| MODELS
+    SVC --> DISK
+
+    classDef edge fill:#0b1022,stroke:#F5C97B,color:#E7ECF7;
+    classDef store fill:#131a38,stroke:#8B93A7,color:#E7ECF7;
+    class PWA,SVC,EPH,WX,TTS,MODELS edge;
+    class DISK store;

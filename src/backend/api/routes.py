@@ -178,6 +178,7 @@ async def _stage_narration(req: PackRequest, snap) -> dict:
     script["fallback_used"] = True
     script["model"] = "template"
     script["provider"] = "template"
+    script["orchestrator"] = "template"
     script["generation"] = template_generation()
     return script
 

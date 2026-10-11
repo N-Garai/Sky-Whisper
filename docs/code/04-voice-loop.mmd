@@ -1,0 +1,28 @@
+%% Voice loop — free browser STT, local keyword intents, agent fallback
+%% with memory. Mirrors voiceIntent.ts matchIntent, useVoiceAgent.ts,
+%% and POST /api/voice/answer (history, 30 s stage budget, TTS reply).
+flowchart TB
+    MIC["Mic button<br/>Web Speech API<br/>Chrome + Android"]
+    NOTYPE["No mic? typed<br/>panel, same path"]
+    HEAR["Normalize<br/>transcript"]
+    KW{"Local keyword<br/>match?"}
+    DESC["Describe intent<br/>generate or replay<br/>the pack audio"]
+    CTRL["Replay, pause<br/>play, louder<br/>quieter, point"]
+    AG["POST /api/voice/answer<br/>question + history<br/>+ snapshot context"]
+    TRY["Chain narrates once<br/>30 s budget,<br/>target-anchored"]
+    TTSA["Spoken reply<br/>ElevenLabs MP3,<br/>browser voice for nacks"]
+    MEM[("Conversation<br/>memory: last<br/>6 exchanges")]
+
+    MIC --> HEAR
+    NOTYPE --> HEAR
+    HEAR --> KW
+    KW -- "describe the sky…" --> DESC
+    KW -- "replay, pause…" --> CTRL
+    KW -- "anything else" --> AG
+    AG --> TRY --> TTSA
+    AG <--> MEM
+
+    classDef edge fill:#0b1022,stroke:#F5C97B,color:#E7ECF7;
+    classDef store fill:#131a38,stroke:#8B93A7,color:#E7ECF7;
+    class MIC,NOTYPE,HEAR,DESC,CTRL,AG,TRY,TTSA edge;
+    class KW,MEM store;

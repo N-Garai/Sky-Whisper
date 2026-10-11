@@ -1,0 +1,35 @@
+%% Model fallback chain — first validated transcript wins.
+%% Mirrors llm_provider.py: _stage order, DEFAULT_FALLBACK_MODELS,
+%% 55 s rung budget, 150 s global budget, retry on 404/410 with the
+%% fallback ID, Mastra bridge tried before direct HTTPS.
+flowchart TB
+    PROV{"LLM_PROVIDER?"}
+    TPL["Template narrator<br/>deterministic, $0<br/>works offline"]
+    OL["Ollama stage<br/>local daemon,<br/>offline-capable"]
+    R1["Gemini fast rung<br/>GEMMA3_MODEL"]
+    R2["Gemini large rung<br/>GEMMA4_MODEL"]
+    R3["Groq open-weight<br/>GROQ_MODEL"]
+    R4["NVIDIA NIM<br/>NVIDIA_MODEL"]
+    FB["Retry once with<br/>fallback model ID<br/>on 404/410"]
+    V{"Validator gates?<br/>numbers ⊆ snapshot<br/>no banned words"}
+    SHIP["Ship transcript<br/>+ generation record<br/>names winning rung"]
+    BUDG["Budget hit or<br/>all rungs failed<br/>template answers"]
+
+    PROV -- "template / no keys" --> TPL
+    PROV -- "ollama" --> OL
+    PROV -- "keys configured" --> R1
+    OL -- fail --> TPL
+    R1 -- fail --> FB
+    FB --> R2
+    R2 -- fail --> R3
+    R3 -- fail --> R4
+    R4 -- fail --> BUDG
+    R1 & R2 & R3 & R4 -- "reply" --> V
+    V -- pass --> SHIP
+    V -- "fail, next rung" --> R2
+    BUDG --> TPL
+
+    classDef edge fill:#0b1022,stroke:#F5C97B,color:#E7ECF7;
+    classDef store fill:#131a38,stroke:#8B93A7,color:#E7ECF7;
+    class TPL,OL,R1,R2,R3,R4,FB,SHIP,BUDG edge;
+    class PROV,V store;
