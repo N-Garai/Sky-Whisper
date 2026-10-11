@@ -150,7 +150,7 @@ class TestVoiceEndpoint:
 
         from src.backend.narration import llm_provider
 
-        async def fake_narrate(snap, duration_seconds=90, extra_context=None):
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None):
             assert extra_context and "bright" in extra_context
             assert duration_seconds == 30
             return {"script": "The moon is high and the night is clear for listening.",
@@ -178,7 +178,7 @@ class TestVoiceEndpoint:
 
         seen: dict = {}
 
-        async def fake_narrate(snap, duration_seconds=90, extra_context=None):
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None):
             seen["context"] = extra_context or ""
             return {"script": "Jupiter is the bright one you asked about, high in the south.",
                     "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],
@@ -209,6 +209,29 @@ class TestPackStream:
         for p in PACKS_DIR.glob("*.mp3"):
             p.unlink(missing_ok=True)
         yield
+
+    def test_quantize_instant_floors_to_grid(self):
+        from src.backend.api.routes import quantize_instant
+
+        assert quantize_instant("2026-10-11T12:02:54Z") == "2026-10-11T12:00:00Z"
+        assert quantize_instant("2026-10-11T12:14:59Z") == "2026-10-11T12:00:00Z"
+        assert quantize_instant("2026-10-11T12:15:00Z") == "2026-10-11T12:15:00Z"
+        assert quantize_instant("2026-10-11T12:03:00+00:00") == "2026-10-11T12:00:00Z"
+
+    def test_same_bucket_shares_pack(self, client):
+        """Two requests minutes apart resolve to one cached pack."""
+        base = {
+            "latitude": 22.5726, "longitude": 88.3639,
+            "duration_seconds": 90,
+        }
+        first = client.post("/api/packs", json={
+            **base, "timestamp": "2026-10-07T18:02:00Z",
+        }).json()
+        second = client.post("/api/packs", json={
+            **base, "timestamp": "2026-10-07T18:11:00Z",
+        }).json()
+        assert first["packId"] == second["packId"]
+        assert first["snapshot"]["timestamp"] == "2026-10-07T18:00:00Z"
 
     def test_stream_emits_stages_then_done(self, client):
         r = client.get("/api/packs/stream", params={
@@ -266,7 +289,7 @@ class TestPackStream:
 
         seen: dict = {}
 
-        async def fake_narrate(snap, duration_seconds=90, extra_context=None):
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None):
             seen["context"] = extra_context or ""
             return {"script": "Jupiter is the bright one you asked about, high in the south.",
                     "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],

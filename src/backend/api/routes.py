@@ -31,12 +31,60 @@ VOICE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Bump when the pack contents or cache semantics change. Old packs keyed under
 # a previous version are never served again.
-PACK_CACHE_VERSION = "v2-generation"
+PACK_CACHE_VERSION = "v3-quantized"
+
+# Snapshot/narration granularity. The sky visibly turns ~3.75° per 15 min —
+# far below a fist-width — so packs built minutes apart are identical and
+# share one cache entry. Without this, every request carries a unique
+# timestamp, the cache never hits, and a retry storm rebuilds the same pack
+# from zero on a 0.1-CPU worker until nothing finishes in time.
+PACK_QUANTUM_MINUTES = 15
+
+
+def quantize_instant(ts: str, quantum_minutes: int = PACK_QUANTUM_MINUTES) -> str:
+    """Floor an ISO-8601 instant to a quantum grid. Raises ValueError."""
+    dt = parse_timestamp(ts)
+    floored = dt.replace(minute=(dt.minute // quantum_minutes) * quantum_minutes,
+                         second=0, microsecond=0)
+    return floored.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Warm slow cold-start artifacts before the first request pays for them.
+
+    The JPL kernel (~16 MB download on a fresh disk) and the TLE fetch used
+    to happen inside the first pack request — 20-60 s of radio silence that
+    proxies and users read as a hang. Warming moves that cost to boot, where
+    Render already expects slowness. Best-effort: any failure just means the
+    first request warms lazily, exactly as before.
+    """
+    async def _warm() -> None:
+        try:
+            from src.backend.core.astronomy import _sky
+            await asyncio.to_thread(_sky)
+        except Exception:
+            pass
+        try:
+            from src.backend.services.satellites import fetch_tle
+            await fetch_tle()
+        except Exception:
+            pass
+
+    task = asyncio.create_task(_warm())
+    try:
+        yield
+    finally:
+        task.cancel()
+
 
 app = FastAPI(
     title="SkyWhisper API",
     version="0.1.0",
     description="Screenless astronomy — deterministic ephemeris, narration, audio packs",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -85,6 +133,10 @@ async def sky_snapshot(req: PackRequest) -> dict:
 @app.post("/api/packs")
 async def generate_pack(req: PackRequest) -> JSONResponse:
     """Full pack: snapshot -> narration -> audio. Cached by 0.5-degree grid."""
+    try:
+        req = req.model_copy(update={"timestamp": quantize_instant(req.timestamp)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     snap = await _stage_snapshot(req)
     script = await _stage_narration(req, snap)
     ckey = _pack_key(req)
@@ -225,8 +277,11 @@ async def stream_pack(
         req = PR(latitude=latitude, longitude=longitude, timestamp=timestamp,
                  timezone=timezone, duration_seconds=duration_seconds,
                  elevation_meters=elevation_meters)
+        req = req.model_copy(update={"timestamp": quantize_instant(req.timestamp)})
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc.errors()))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     async def gen() -> AsyncIterator[bytes]:
         try:
@@ -317,7 +372,7 @@ async def voice_answer(body: dict) -> JSONResponse:
                 prior.append(f"Earlier they asked: {q} You answered: {a}")
         if prior:
             question = "\n".join(prior) + "\nNow they follow up: " + question
-    result = await narrate_with_model(snap, 30, extra_context=question)
+    result = await narrate_with_model(snap, 30, extra_context=question, budget_s=80.0)
     if result is not None:
         text, provider, model = result["script"], result["provider"], result["model"]
     else:

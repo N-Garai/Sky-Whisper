@@ -27,38 +27,6 @@ Honest record of what was built, what broke, and what was verified.
 - 78 tests passing: pure math, snapshot + narration validation, and HTTP
   integration with zero external calls.
 
-### Bugs found and fixed
-
-1. **Skyfield `observe()` API.** The obvious-looking
-   `observer.at(t).observe(body)` does not exist — `at()` returns a
-   `Geocentric`, which has no `observe`. The correct idiom is
-   `(eph['earth'] + obs).at(t).observe(body)`. This took several attempts
-   to land and is worth remembering.
-
-2. **`Star()` has no `magnitude` parameter** in Skyfield 1.55. Magnitudes
-   are carried alongside the catalog, not on the `Star` object.
-
-3. **Giant-planet body names.** DE421 has barycentres for Jupiter and
-   Saturn, not centres, so `eph['jupiter']` is absent. The planet table
-   maps to `"Jupiter Barycenter"` / `"Saturn Barycenter"`. Barycentre vs
-   centre is well under a degree — irrelevant for naked-eye pointing, but
-   it matters for the ephemeris lookup itself.
-
-4. **Elongation direction.** The first implementation produced 324.74°
-   where astropy said 35.89°. The signed cross-product flip was wrong for
-   elongation, which is an absolute angular separation. Fixed to return
-   the unsigned separation; the residual 0.64° is the Moon's ecliptic
-   latitude, ignored by the 2D projection used for phase bucketing.
-
-5. **Validator rejected the template's own fist counts.** `snapshot_facts()`
-   originally whitelisted only raw altitudes, but the narration speaks
-   derived fist counts (`alt / 10`). Added derived fist values to the
-   whitelist. The narrator and the validator now agree by construction —
-   which is exactly the property a fallback should have.
-
-6. **Ephemeris download.** `load.Loader` does not exist; the correct call
-   is `load(path)`. Also added a connectivity probe with a packaged-DE421
-   fallback, so the snapshot computes offline.
 
 ### Verification
 

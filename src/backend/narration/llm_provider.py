@@ -46,6 +46,12 @@ from src.shared.sky_snapshot import SkySnapshot
 # the template answers — a slow narration must never become no narration.
 NARRATION_BUDGET_S = 150.0
 
+# Ceiling per rung (Mastra attempt + direct attempt + retries). Without it,
+# one slow rung eats the whole global budget and starves the faster rungs
+# behind it — exactly the cascade in the field logs (a 45 s+ giant followed
+# by "budget exhausted" on providers that answer in seconds).
+RUNG_BUDGET_S = 55.0
+
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 GROQ_BASE = "https://api.groq.com/openai/v1"
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
@@ -169,8 +175,11 @@ def _user_prompt(snap: SkySnapshot, duration_seconds: int,
         live.append(f"note = {w}")
     context = f"\n\nListener request to honor first:\n{extra_context.strip()}\n" if extra_context and extra_context.strip() else ""
     return (
-        f"Write a transcript to be read aloud for EXACTLY about {duration_seconds} seconds "
-        f"of speech: between {budget - 15} and {budget + 15} words. Count your words.\n"
+        f"Write a transcript to be read aloud for about {duration_seconds} seconds "
+        f"of speech (roughly {budget} words).\n"
+        "Write flowing prose only. Do not count words aloud, do not enumerate, "
+        "do not list numbers. Never write an altitude, azimuth, degree value, "
+        "magnitude, or time of your own — directions stay body-relative, always.\n"
         f"{context}\n"
         "Live conditions:\n" + "\n".join(live) + "\n\n"
         "Closed set of computed facts you may speak (use only these numbers):\n"
@@ -217,19 +226,27 @@ async def _chat(cfg: dict[str, str], system: str, user: str,
                 data = await resp.json()
                 return data["choices"][0]["message"]["content"].strip()
     except Exception as exc:  # network, timeout, malformed response
-        errors.append(f"{type(exc).__name__}: {exc}"[:200])
+        detail = str(exc).strip() or "request timed out"
+        errors.append(f"{type(exc).__name__}: {detail}"[:200])
         return None
 
 
 async def _stage_text(
     cfg: dict[str, str], snap: SkySnapshot, duration_seconds: int, facts: dict,
     errors: list[str], extra_context: str | None = None,
+    rung_over: Any = None,
 ) -> str | None:
     """Run one chain stage. Returns validated text, or None with reasons in `errors`.
 
     The same length and fact gates apply to every stage, so a bad stage is
-    skipped rather than shipped.
+    skipped rather than shipped. `rung_over`, when given, cancels retries
+    once this rung has spent its time share.
     """
+    def _expired() -> bool:
+        try:
+            return bool(rung_over and rung_over())
+        except Exception:
+            return False
     budget = word_budget(duration_seconds)
     lo, hi, wide_lo, wide_hi = _length_bands(budget)
     facts = _allowed_facts(snap, duration_seconds, budget)
@@ -241,6 +258,9 @@ async def _stage_text(
         return None
 
     if not (lo <= len(text.split()) <= hi):
+        if _expired():
+            errors.append("rung budget exhausted before length retry")
+            return None
         retry = (
             user
             + f"\n\nYour previous attempt had {len(text.split())} words; "
@@ -258,6 +278,9 @@ async def _stage_text(
 
     ok, problems = validate_narration(text, facts)
     if not ok:
+        if _expired():
+            errors.append("rung budget exhausted before validation retry")
+            return None
         retry = (
             user
             + "\n\nYour previous output was rejected for these reasons and must not be repeated: "
@@ -309,14 +332,14 @@ def _result(snap: SkySnapshot, text: str, facts: dict, budget: int,
 
 async def narrate_with_model(
     snap: SkySnapshot, duration_seconds: int = 90,
-    extra_context: str | None = None,
+    extra_context: str | None = None, budget_s: float | None = None,
 ) -> dict[str, Any] | None:
     """Walk the model chain. Returns the first validated transcript, or None
     so the caller uses the template narrator.
 
     Bounded end to end: the whole walk (all rungs, both paths) must finish
-    inside NARRATION_BUDGET_S, after which the template answers. Without a
-    global budget, stacked provider timeouts on a small instance add up to
+    inside `budget_s`, after which the template answers. Without a global
+    budget, stacked provider timeouts on a small instance add up to
     a pack that never resolves. `extra_context` (a listener question) is
     honored first by every path, including the Mastra workflow. The caller
     can read the reasons from `last_attempts()` after a None result. Mastra
@@ -327,6 +350,8 @@ async def narrate_with_model(
 
     global _LAST_ATTEMPTS
     _LAST_ATTEMPTS = []
+    if budget_s is None:
+        budget_s = NARRATION_BUDGET_S
     started = time.monotonic()
     stages = _chain()
     if not stages:
@@ -360,15 +385,20 @@ async def narrate_with_model(
     mastra_pending = mastra_up
 
     for cfg in stages:
-        if time.monotonic() - started > NARRATION_BUDGET_S:
+        if time.monotonic() - started > budget_s:
             attempts.append({"stage": cfg["name"], "status": "skipped",
-                             "reason": f"narration budget ({NARRATION_BUDGET_S}s) exhausted"})
+                             "reason": f"narration budget ({budget_s}s) exhausted"})
             continue
         if cfg["model"] in tried_models:
             attempts.append({"stage": cfg["name"], "status": "skipped",
                              "reason": "same model already tried"})
             continue
         tried_models.add(cfg["model"])
+        rung_started = time.monotonic()
+
+        def _rung_over() -> bool:
+            return (time.monotonic() - started > budget_s
+                    or time.monotonic() - rung_started > RUNG_BUDGET_S)
 
         # Path 1 — Mastra workflow for this rung (facts -> agent -> validate),
         # pinned to the rung's endpoint via environment overrides.
@@ -392,9 +422,14 @@ async def narrate_with_model(
             attempts.append({"stage": cfg["name"] + " (mastra)", "status": "rejected",
                              "reason": "no usable text or failed gates"})
 
-        # Path 2 — direct provider HTTP for this rung.
+        # Path 2 — direct provider HTTP for this rung, unless this rung has
+        # already consumed its share of time.
+        if _rung_over():
+            attempts.append({"stage": cfg["name"], "status": "skipped",
+                             "reason": f"rung budget ({RUNG_BUDGET_S}s) exhausted"})
+            continue
         errors: list[str] = []
-        text = await _stage_text(cfg, snap, duration_seconds, facts, errors, extra_context)
+        text = await _stage_text(cfg, snap, duration_seconds, facts, errors, extra_context, _rung_over)
         if text is not None:
             return _result(snap, text, facts, budget, cfg, "direct", attempts)
         attempts.append({"stage": cfg["name"], "status": "failed",

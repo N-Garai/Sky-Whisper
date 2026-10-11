@@ -258,3 +258,50 @@ def test_budget_echo_is_allowed_not_hallucination(snapshot, clean_env):
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is not None
     assert result["provider"] == "gemini-fast"
+
+
+def test_raw_altitudes_rejected_then_next_text_wins(snapshot):
+    """Production failure, pinned: a model emitting raw degree altitudes is
+    rejected, and its clean retry ships."""
+    from src.backend.narration import mastra_client
+
+    base = grounded_for(snapshot)
+    altitudes = base + " Saturn sits at 55 degrees altitude and 135 degrees azimuth tonight."
+    cfg = [{"name": "gemini-fast", "base_url": "https://example.test",
+            "model": "gemma-4-26b-a4b-it", "api_key": "k"}]
+    responses = iter([altitudes, base])
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chain", return_value=cfg), patch.object(
+        llm_provider, "_chat", side_effect=lambda *a, **k: next(responses)):
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    assert result is not None
+    assert "55 degrees" not in result["script"]
+
+
+def test_rung_deadline_skips_slow_rung(snapshot):
+    """A rung past its time share is skipped instead of retried into oblivion."""
+    from src.backend.narration import mastra_client
+
+    monkeypatch_rung = llm_provider.RUNG_BUDGET_S
+    llm_provider.RUNG_BUDGET_S = -1
+    try:
+        cfg = [{"name": "groq", "base_url": "https://example.test",
+                "model": "openai/gpt-oss-120b", "api_key": "g"}]
+        with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+            llm_provider, "_chain", return_value=cfg), patch.object(
+            llm_provider, "_chat") as chat:
+            result = asyncio.run(narrate_with_model(snapshot, 90))
+        assert result is None
+        chat.assert_not_called()
+        skips = [a for a in llm_provider.last_attempts() if a["status"] == "skipped"]
+        assert skips and "rung budget" in skips[0]["reason"]
+    finally:
+        llm_provider.RUNG_BUDGET_S = monkeypatch_rung
+
+
+def test_prompt_never_asks_for_counting(snapshot):
+    """'Count your words' made models enumerate numbers aloud; gone for good."""
+    prompt = llm_provider._user_prompt(snapshot, 90)
+    assert "Count your words" not in prompt
+    assert "EXACTLY" not in prompt
+    assert "enumerate" in prompt

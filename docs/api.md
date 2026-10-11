@@ -141,6 +141,10 @@ Packs are cached by a key derived from the request. Location snaps to a
 0.5° grid so nearby observers share a pack, which is what keeps the
 free-tier budget viable. A cache hit returns without regenerating.
 
+Timestamps are floored to 15-minute buckets before computation: the sky
+turns ~3.75° per bucket (far below naked-eye resolution), so requests
+minutes apart share one pack instead of rebuilding it from zero.
+
 ## `GET /api/packs/stream`
 
 Same pipeline as `POST /api/packs`, streamed as server-sent events so the
