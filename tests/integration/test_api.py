@@ -196,3 +196,91 @@ class TestVoiceEndpoint:
         assert r.status_code == 200
         assert "Jupiter, high in the south" in seen["context"]
         assert "tell me more about Jupiter" in seen["context"]
+
+
+class TestPackStream:
+    @pytest.fixture(autouse=True)
+    def _clean_pack_cache(self):
+        """tmp/ persists across runs: start uncached so stage order is real."""
+        from src.backend.api.routes import PACKS_DIR
+
+        for p in PACKS_DIR.glob("*.json"):
+            p.unlink(missing_ok=True)
+        for p in PACKS_DIR.glob("*.mp3"):
+            p.unlink(missing_ok=True)
+        yield
+
+    def test_stream_emits_stages_then_done(self, client):
+        r = client.get("/api/packs/stream", params={
+            "latitude": -33.8688, "longitude": 151.2093,
+            "timestamp": "2026-10-09T14:00:00Z",
+            "duration_seconds": 90,
+        })
+        assert r.status_code == 200
+        assert "text/event-stream" in r.headers["content-type"]
+        events: list[tuple[str | None, str]] = []
+        current: str | None = None
+        for line in r.text.splitlines():
+            if line.startswith("event:"):
+                current = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                events.append((current, line[len("data:"):].strip()))
+                current = None
+        kinds = [e for e, _ in events]
+        assert kinds[:3] == ["snapshot", "narration", "audio"], kinds
+        assert kinds[-1] == "done"
+        pack = json.loads(events[-1][1])
+        assert pack["packId"]
+        assert pack["narration"]["script"]
+        assert pack["transcriptPath"].endswith(pack["packId"] + "/transcript")
+
+    def test_stream_rejects_bad_input(self, client):
+        r = client.get("/api/packs/stream", params={
+            "latitude": 999, "longitude": 0,
+            "timestamp": "2026-10-07T18:00:00Z",
+        })
+        assert r.status_code == 422
+
+    def test_stream_cache_hit_emits_single_done(self, client):
+        params = {
+            "latitude": 40.7128, "longitude": -74.0060,
+            "timestamp": "2026-10-08T02:00:00Z",
+            "duration_seconds": 90,
+        }
+        first = client.get("/api/packs/stream", params=params).text
+        second = client.get("/api/packs/stream", params=params).text
+        def kinds(body: str) -> list[str]:
+            out: list[str] = []
+            for line in body.splitlines():
+                if line.startswith("event:"):
+                    out.append(line[len("event:"):].strip())
+            return out
+        assert kinds(first)[-1] == "done"
+        # Second run is served from cache: a single done event, same pack.
+        assert kinds(second) == ["done"]
+        pack_id = json.loads([l[len("data:"):] for l in second.splitlines() if l.startswith("data:")][0])["packId"]
+        assert pack_id in first
+        from unittest.mock import patch
+
+        from src.backend.narration import llm_provider
+
+        seen: dict = {}
+
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None):
+            seen["context"] = extra_context or ""
+            return {"script": "Jupiter is the bright one you asked about, high in the south.",
+                    "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],
+                    "fallback_used": False, "model": "m", "provider": "test",
+                    "orchestrator": "direct", "facts": {}}
+
+        with patch.object(llm_provider, "narrate_with_model", side_effect=fake_narrate):
+            r = client.post("/api/voice/answer", json={
+                "latitude": 22.5726, "longitude": 88.3639,
+                "timestamp": "2026-10-07T18:00:00Z",
+                "transcript": "tell me more about Jupiter",
+                "history": [{"q": "what is that bright one",
+                             "a": "That is Jupiter, high in the south."}],
+            })
+        assert r.status_code == 200
+        assert "Jupiter, high in the south" in seen["context"]
+        assert "tell me more about Jupiter" in seen["context"]

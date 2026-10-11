@@ -141,6 +141,19 @@ Packs are cached by a key derived from the request. Location snaps to a
 0.5° grid so nearby observers share a pack, which is what keeps the
 free-tier budget viable. A cache hit returns without regenerating.
 
+## `GET /api/packs/stream`
+
+Same pipeline as `POST /api/packs`, streamed as server-sent events so the
+client can show real progress instead of a blind wait. Query parameters
+mirror the pack request (`latitude`, `longitude`, `timestamp`,
+`duration_seconds`, `timezone`, `elevation_meters`).
+
+Events: `snapshot` → `narration` → `audio` → `done` (carries the full
+pack). A cache hit emits a single `done`. Failures emit `error`. A
+heartbeat comment flows during long model stages so proxies never see an
+idle connection. Any transport failure should fall back to `POST /api/packs` —
+same pack, no progress events.
+
 ## `GET /api/packs/{pack_id}/audio`
 
 Streams the pack MP3. Returns `404` if the pack is not in the current

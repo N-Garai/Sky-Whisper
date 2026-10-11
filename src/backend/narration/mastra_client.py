@@ -26,6 +26,8 @@ _CLI = _HARNESS_DIR / "dist" / "cli.js"
 # short enough that pack generation never hangs on it.
 TIMEOUT_SECONDS = 75
 
+_LAST_DETAILS: dict[str, Any] = {}
+
 
 def harness_dir() -> Path:
     return _HARNESS_DIR
@@ -43,13 +45,18 @@ async def narrate_via_mastra(
     timeout: float = TIMEOUT_SECONDS,
     env_overrides: dict[str, str] | None = None,
     context: str | None = None,
+    latitude: float = 0.0,
+    longitude: float = 0.0,
+    timestamp: str = "",
 ) -> str | None:
     """Run the Mastra narration workflow. Returns text, or None to fall back.
 
     `env_overrides` pins the harness to one chain rung (model, endpoint,
     key) without touching the parent process environment. `context` is a
-    listener question the narration must honor first. Never raises.
+    listener question the narration must honor first. Coordinates ride along
+    because the forced-tool agent fetches its own snapshot. Never raises.
     """
+    global _LAST_DETAILS
     if not is_available():
         return None
     payload = json.dumps({
@@ -57,6 +64,9 @@ async def narrate_via_mastra(
         "durationSeconds": duration_seconds,
         "budgetWords": budget_words,
         "context": context or "",
+        "latitude": latitude,
+        "longitude": longitude,
+        "timestamp": timestamp,
     })
     env = {**os.environ, **(env_overrides or {})}
     try:
@@ -71,12 +81,29 @@ async def narrate_via_mastra(
     except Exception:
         return None
     if proc.returncode != 0:
+        _LAST_DETAILS = {}
         return None
     try:
         data = json.loads(out.decode("utf-8", errors="replace"))
     except Exception:
+        _LAST_DETAILS = {}
         return None
+    # Tolerant parse: current CLI prints the narration envelope
+    # {text, bodies_mentioned, wordCount}; older builds print {text} only.
     text = data.get("text", "")
     if not isinstance(text, str) or len(text) < 120:
+        _LAST_DETAILS = {}
         return None
+    details: dict[str, Any] = {}
+    bodies = data.get("bodies_mentioned")
+    if isinstance(bodies, list):
+        details["bodies_mentioned"] = [b for b in bodies if isinstance(b, str)][:12]
+    if isinstance(data.get("wordCount"), (int, float)):
+        details["word_count_reported"] = int(data["wordCount"])
+    _LAST_DETAILS = details
     return text.strip()
+
+
+def last_details() -> dict[str, Any]:
+    """Envelope extras from the most recent harness run (no secrets)."""
+    return dict(_LAST_DETAILS)

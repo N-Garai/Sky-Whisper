@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import { WAKE_WORDS } from '../lib/voiceIntent';
+import { workingChime, doneChime, errorChime } from '../lib/chimes';
 
 interface VoiceBarProps {
   onDescribe: () => void;
@@ -13,6 +14,42 @@ interface VoiceBarProps {
 }
 
 type AskState = 'idle' | 'thinking' | 'error';
+
+/**
+ * Visible follow-up path: type any question (e.g. "tell me more about
+ * Jupiter") and it rides the same agent loop as voice, with the previous
+ * exchange attached for context. Works on every browser, mic or not.
+ */
+function FollowUpBox({ onAsk }: { onAsk: (q: string) => void }) {
+  const [value, setValue] = useState('');
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const q = value.trim();
+        if (q) {
+          setValue('');
+          onAsk(q);
+        }
+      }}
+    >
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Or type a follow-up…"
+        aria-label="Type a follow-up question"
+        className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white/85 text-xs placeholder:text-white/25 focus:border-amber-400 focus:outline-none"
+      />
+      <button
+        type="submit"
+        className="shrink-0 px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-medium hover:bg-amber-500/30 transition-colors"
+      >
+        Ask
+      </button>
+    </form>
+  );
+}
 
 /**
  * Floating voice control. One tap enables the mic; keywords then act
@@ -45,6 +82,7 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
     setAsk('thinking');
     setReply(null);
     setReplyAudio(null);
+    workingChime();
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), 100000);
     try {
@@ -65,9 +103,15 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
       setReply(typeof data.reply === 'string' && data.reply ? data.reply : null);
       setReplyAudio(typeof data.audioPath === 'string' ? data.audioPath : null);
       setAsk(data.reply ? 'idle' : 'error');
-      if (data.reply) lastExchange.current = { q: query, a: String(data.reply).slice(0, 600) };
+      if (data.reply) {
+        doneChime();
+        lastExchange.current = { q: query, a: String(data.reply).slice(0, 600) };
+      } else {
+        errorChime();
+      }
     } catch {
       setAsk('error');
+      errorChime();
     } finally {
       window.clearTimeout(timer);
     }
@@ -99,9 +143,14 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
               Voice Control
             </p>
             {!agent.supported ? (
-              <p className="text-sm text-white/60">
-                Voice control needs Chrome, Edge, or Safari on this device.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm text-white/60">
+                  Voice control needs Chrome, Edge, or Safari — but you can
+                  still ask by typing below.
+                </p>
+                <FollowUpBox onAsk={(q) => void askAgent(q)} />
+                {agent.error && <p className="text-xs text-red-300/80">{agent.error}</p>}
+              </div>
             ) : !agent.listening ? (
               <div className="space-y-3">
                 <p className="text-sm text-white/60 leading-relaxed">
@@ -135,6 +184,17 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
                   <p className="text-xs text-red-300/80">The agent didn&rsquo;t answer — try again.</p>
                 )}
                 {reply && <p className="text-xs text-white/65 leading-relaxed line-clamp-4">{reply}</p>}
+                <FollowUpBox onAsk={(q) => void askAgent(q)} />
+                <div className="flex flex-wrap gap-1.5">
+                  {['describe the sky', 'tell me about tonight', 'repeat that', 'pause'].map((k) => (
+                    <span
+                      key={k}
+                      className="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[9px] tracking-[0.08em] text-white/35"
+                    >
+                      {k}
+                    </span>
+                  ))}
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={agent.stop}

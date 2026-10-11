@@ -9,8 +9,27 @@ import { SkyPreview } from './components/SkyPreview';
 import { AboutSection } from './components/AboutSection';
 import { Footer } from './components/Footer';
 import { VoiceBar } from './components/VoiceBar';
+import { LocationGate } from './components/LocationGate';
+import { BlackoutPointerGate } from './components/BlackoutPointer';
+import { streamPack } from './lib/packStream';
 import { Eyebrow, Reveal } from './components/home/Constellation';
 import { useGeolocation } from './hooks/useGeolocation';
+
+function storedLocChoice(): string | null {
+  try {
+    return localStorage.getItem('skywhisper-loc');
+  } catch {
+    return null;
+  }
+}
+
+function rememberLocChoice(value: string) {
+  try {
+    localStorage.setItem('skywhisper-loc', value);
+  } catch {
+    // private mode — ask again next visit, harmless
+  }
+}
 
 export default function App() {
   const [snapshot, setSnapshot] = useState<any>(null);
@@ -21,11 +40,14 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [redShift, setRedShift] = useState(false);
   const [autoPlayKey, setAutoPlayKey] = useState(0);
+  const [pointerOpen, setPointerOpen] = useState(false);
   const [transport, setTransport] = useState<{ action: 'play' | 'pause' | 'volume'; dir?: 'up' | 'down'; n: number } | null>(null);
   const stageTimer = useRef<number | null>(null);
   const prepareRef = useRef<HTMLElement>(null);
   const listenRef = useRef<HTMLDivElement>(null);
-  const geo = useGeolocation();
+  // First-visit location gate: null = not asked yet (modal open).
+  const [locChoice, setLocChoice] = useState<string | null>(() => storedLocChoice());
+  const geo = useGeolocation({ enabled: locChoice !== null });
 
   // Register the service worker so the pack survives airplane mode.
   useEffect(() => {
@@ -43,8 +65,37 @@ export default function App() {
     setLoading(true);
     setError(null);
     setDuration(params.duration);
-    // The ritual advances on its own while the server works; the final
-    // stage lands only when the pack is truly ready.
+
+    const finish = (pack: any) => {
+      setSnapshot(pack.snapshot ?? null);
+      setPackData(pack);
+      setStage(PREPARE_STAGES[PREPARE_STAGES.length - 1]);
+      // Bring the listener to the result once it exists.
+      window.setTimeout(() => {
+        listenRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+    };
+    const fail = () => {
+      setStage('');
+      setError('The telescope is waking up — free servers nap. Give it about a minute, then try again');
+      window.setTimeout(() => setError(null), 8000);
+    };
+
+    // Live progress first: the server streams its real stages, which drive
+    // the ritual. Any transport failure falls back to the plain POST pack.
+    setStage(PREPARE_STAGES[0]);
+    let streamed = false;
+    try {
+      const pack = await streamPack(params, (label) => setStage(label));
+      finish(pack);
+      streamed = true;
+    } catch {
+      // Stream unavailable — same pack via POST, timer-driven ritual below.
+    } finally {
+      setLoading(false);
+    }
+    if (streamed) return;
+
     let step = 0;
     setStage(PREPARE_STAGES[0]);
     stageTimer.current = window.setInterval(() => {
@@ -71,18 +122,10 @@ export default function App() {
       if (!packRes.ok) throw new Error(`Server answered ${packRes.status}`);
       const pack = await packRes.json();
       if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
-      setSnapshot(pack.snapshot ?? null);
-      setPackData(pack);
-      setStage(PREPARE_STAGES[PREPARE_STAGES.length - 1]);
-      // Bring the listener to the result once it exists.
-      window.setTimeout(() => {
-        listenRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 120);
+      finish(pack);
     } catch {
       if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
-      setStage('');
-      setError('The telescope is waking up — free servers nap. Give it about a minute, then try again');
-      window.setTimeout(() => setError(null), 8000);
+      fail();
     } finally {
       setLoading(false);
     }
@@ -129,6 +172,18 @@ export default function App() {
   const voiceVolume = (direction: 'up' | 'down') => {
     if (!hasPack) return;
     setTransport((t) => ({ action: 'volume', dir: direction, n: (t?.n ?? 0) + 1 }));
+  };
+
+  /* ---- first-visit location gate ---- */
+  const chooseShareLocation = () => {
+    rememberLocChoice('auto');
+    setLocChoice('auto');
+    geo.request(); // direct tap → best permission-grant rates
+  };
+  const chooseManualLocation = () => {
+    rememberLocChoice('manual');
+    setLocChoice('manual');
+    document.getElementById('prepare')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
@@ -234,6 +289,16 @@ export default function App() {
                           transport={transport}
                         />
                         {snapshot && <SkyPreview snapshot={snapshot} />}
+                        {snapshot && (
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => setPointerOpen(true)}
+                              className="rounded-full border border-white/15 px-5 py-2.5 text-xs text-white/60 transition-colors hover:border-amber-400/40 hover:text-amber-300"
+                            >
+                              Point at the Sky — Dark Compass
+                            </button>
+                          </div>
+                        )}
                       </motion.div>
                     ) : (
                       <motion.div
@@ -275,6 +340,22 @@ export default function App() {
           onVolume={voiceVolume}
           lat={geo.lat}
           lon={geo.lon}
+        />
+
+        <LocationGate
+          open={locChoice === null}
+          denied={geo.error === 'permission denied'}
+          onShare={chooseShareLocation}
+          onManual={chooseManualLocation}
+          onDismiss={() => setLocChoice('later')}
+        />
+
+        <BlackoutPointerGate
+          open={pointerOpen}
+          snapshot={snapshot}
+          lat={geo.lat ?? 22.57}
+          lon={geo.lon ?? 88.36}
+          onClose={() => setPointerOpen(false)}
         />
       </div>
     </div>

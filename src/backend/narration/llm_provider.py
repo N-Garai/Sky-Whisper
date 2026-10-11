@@ -298,7 +298,9 @@ async def narrate_with_model(
     attempts: list[dict[str, str]] = []
     tried_models: set[str] = set()
 
-    from src.backend.narration.mastra_client import is_available, narrate_via_mastra
+    from src.backend.narration.mastra_client import (
+        is_available, last_details, narrate_via_mastra,
+    )
 
     mastra_up = is_available()
 
@@ -306,6 +308,12 @@ async def narrate_with_model(
         ok, _ = validate_narration(text, facts)
         n = len(text.split())
         return ok and ((lo <= n <= hi) or (wide_lo <= n <= wide_hi))
+
+    def _with_details(script: dict[str, Any]) -> dict[str, Any]:
+        details = last_details()
+        if details.get("bodies_mentioned") is not None:
+            script["bodies_mentioned"] = details["bodies_mentioned"]
+        return script
 
     for cfg in stages:
         if cfg["model"] in tried_models:
@@ -323,11 +331,15 @@ async def narrate_with_model(
                     "MASTRA_MODEL_ID": cfg["model"],
                     "MASTRA_BASE_URL": cfg["base_url"],
                     "MASTRA_API_KEY": cfg.get("api_key", ""),
+                    "SKYWHISPER_PORT": os.getenv("PORT", "8080"),
                 },
                 context=extra_context,
+                latitude=float(snap.location.get("latitude", 0.0)),
+                longitude=float(snap.location.get("longitude", 0.0)),
+                timestamp=snap.timestamp,
             )
             if text is not None and _mastra_ok(text):
-                return _result(snap, text, facts, budget, cfg, "mastra", attempts)
+                return _with_details(_result(snap, text, facts, budget, cfg, "mastra", attempts))
             attempts.append({"stage": cfg["name"] + " (mastra)", "status": "rejected",
                              "reason": "no usable text or failed gates"})
 

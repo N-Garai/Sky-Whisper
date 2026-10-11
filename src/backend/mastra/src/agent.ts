@@ -8,7 +8,12 @@
  */
 import { Agent } from '@mastra/core/agent';
 import type { OpenAICompatibleConfig } from '@mastra/core/llm';
-import { formatSkyFactsTool, validateNarrationTool } from './tools.js';
+import {
+  formatSkyFactsTool,
+  getBodyDirectionTool,
+  getSkySnapshotTool,
+  validateNarrationTool,
+} from './tools.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import type { ProviderConfig } from './config.js';
 
@@ -44,6 +49,6 @@ export function createDocentAgent(cfg: ProviderConfig): Agent {
     name: 'SkyWhisper Audio Docent',
     instructions: SYSTEM_PROMPT,
     model: modelFor(cfg),
-    tools: { formatSkyFactsTool, validateNarrationTool },
+    tools: { getSkySnapshotTool, getBodyDirectionTool, formatSkyFactsTool, validateNarrationTool },
   });
 }

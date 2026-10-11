@@ -61,11 +61,14 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon,
     onPrepare({ lat: latNum, lon: lonNum, timestamp, duration });
   };
 
-  // M1: fire once, shortly after coordinates arrive, unless the user
-  // takes over by typing. Any keystroke sets touched and cancels this.
+  // M1: fire once, shortly after a REAL geolocation fix arrives — never
+  // on the placeholder defaults. Any keystroke sets touched and cancels this.
   const autoFired = useRef(false);
+  const hasFix = initialLat !== null && initialLat !== undefined &&
+                 initialLon !== null && initialLon !== undefined;
   useEffect(() => {
     if (!autoPrepare || autoFired.current || touched || loading) return;
+    if (!hasFix) return;
     if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return;
     const timer = window.setTimeout(() => {
       if (!autoFired.current) {
@@ -76,7 +79,7 @@ export function PrepareCard({ onPrepare, loading, stage, initialLat, initialLon,
     return () => window.clearTimeout(timer);
     // handleSubmit reads latest state; guard refs prevent refires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPrepare, touched, loading, lat, lon]);
+  }, [autoPrepare, touched, loading, lat, lon, initialLat, initialLon]);
 
   const activeStage = PREPARE_STAGES.indexOf(stage);
 

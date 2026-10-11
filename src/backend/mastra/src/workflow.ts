@@ -9,9 +9,10 @@
  */
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod/v4';
+import type { Agent } from '@mastra/core/agent';
 import { createDocentAgent } from './agent.js';
 import { validateText } from './tools.js';
-import { userPrompt } from './prompt.js';
+import { agentBrief, userPrompt } from './prompt.js';
 import type { ProviderConfig } from './config.js';
 
 export interface NarrationInput {
@@ -19,10 +20,69 @@ export interface NarrationInput {
   durationSeconds: number;
   budgetWords: number;
   context?: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
 }
 
 export interface NarrationOutput {
   text: string;
+}
+
+/** Zod narration envelope: the contract every narration leaves the harness in. */
+export const narrationEnvelope = z.object({
+  script: z.string().min(120),
+  bodiesMentioned: z.array(z.string()).default([]),
+  wordCount: z.number(),
+});
+
+export type NarrationEnvelope = z.infer<typeof narrationEnvelope>;
+
+/** Body names recoverable from the flat facts dict (planet.X / star.X keys). */
+export function bodiesInFacts(factsJson: string): string[] {
+  try {
+    const facts = JSON.parse(factsJson) as Record<string, unknown>;
+    const names = new Set<string>();
+    for (const k of Object.keys(facts)) {
+      const m = /^(?:planet|star)\.(.+)\.(?:altitude_deg|fists)$/.exec(k);
+      if (m) names.add(m[1]);
+    }
+    return [...names];
+  } catch {
+    return [];
+  }
+}
+
+export function extractMentioned(text: string, candidates: string[]): string[] {
+  const lowered = text.toLowerCase();
+  return candidates.filter((c) => lowered.includes(c.toLowerCase()));
+}
+
+/**
+ * Generate narration text. Streams first (real token streaming), falls back
+ * to a plain completion — identical output contract either way. The brief
+ * carries coordinates only; get-sky-snapshot is a REQUIRED first tool call,
+ * so the trace always shows the agent fetching before narrating.
+ */
+export async function generateNarration(
+  agent: Agent,
+  brief: string,
+): Promise<string> {
+  try {
+    const stream = await agent.stream(brief, {
+      maxSteps: 8,
+      toolChoice: { type: 'tool', toolName: 'get-sky-snapshot' },
+    });
+    let text = '';
+    for await (const chunk of stream.textStream) text += chunk;
+    if (text.trim().length >= 120) return text.trim();
+  } catch {
+    // Streaming or forced tools unsupported here — plain completion below.
+  }
+  const res = await agent.generate(brief, { maxSteps: 8 });
+  const text = (res.text ?? '').trim();
+  if (text.length < 120) throw new Error('model returned unusable text');
+  return text;
 }
 
 const factsStep = createStep({
@@ -32,12 +92,19 @@ const factsStep = createStep({
     durationSeconds: z.number(),
     budgetWords: z.number(),
     context: z.string().optional().default(''),
+    latitude: z.number(),
+    longitude: z.number(),
+    timestamp: z.string(),
   }),
   outputSchema: z.object({
+    factsJson: z.string(),
     factsBlock: z.string(),
     durationSeconds: z.number(),
     budgetWords: z.number(),
     context: z.string(),
+    latitude: z.number(),
+    longitude: z.number(),
+    timestamp: z.string(),
   }),
   execute: async ({ inputData }) => {
     const facts = JSON.parse(inputData.factsJson) as Record<string, number | string>;
@@ -46,10 +113,14 @@ const factsStep = createStep({
       .map((k) => `${k} = ${facts[k]}`)
       .join('\n');
     return {
+      factsJson: inputData.factsJson,
       factsBlock,
       durationSeconds: inputData.durationSeconds,
       budgetWords: inputData.budgetWords,
       context: inputData.context ?? '',
+      latitude: inputData.latitude,
+      longitude: inputData.longitude,
+      timestamp: inputData.timestamp,
     };
   },
 });
@@ -60,20 +131,45 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
   const narrateStep = createStep({
     id: 'narrate-step',
     inputSchema: z.object({
+      factsJson: z.string(),
       factsBlock: z.string(),
       durationSeconds: z.number(),
       budgetWords: z.number(),
       context: z.string(),
+      latitude: z.number(),
+      longitude: z.number(),
+      timestamp: z.string(),
     }),
     outputSchema: z.object({
       text: z.string(),
       factsBlock: z.string(),
+      bodiesMentioned: z.array(z.string()),
+      wordCount: z.number(),
       context: z.string(),
+      durationSeconds: z.number(),
+      budgetWords: z.number(),
     }),
     execute: async ({ inputData }) => {
-      const prompt = userPrompt(inputData.factsBlock, inputData.durationSeconds, inputData.budgetWords, inputData.context);
-      const res = await agent.generate(prompt, { maxSteps: 3 });
-      return { text: (res.text ?? '').trim(), factsBlock: inputData.factsBlock, context: inputData.context };
+      const brief = agentBrief(
+        inputData.latitude, inputData.longitude, inputData.timestamp,
+        inputData.durationSeconds, inputData.budgetWords, inputData.context,
+      );
+      const text = await generateNarration(agent, brief);
+      const words = text.split(/\s+/).filter(Boolean);
+      const envelope = narrationEnvelope.parse({
+        script: text,
+        bodiesMentioned: extractMentioned(text, bodiesInFacts(inputData.factsJson ?? '')),
+        wordCount: words.length,
+      });
+      return {
+        text: envelope.script,
+        factsBlock: inputData.factsBlock,
+        bodiesMentioned: envelope.bodiesMentioned,
+        wordCount: envelope.wordCount,
+        context: inputData.context,
+        durationSeconds: inputData.durationSeconds,
+        budgetWords: inputData.budgetWords,
+      };
     },
   });
 
@@ -82,12 +178,16 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
     inputSchema: z.object({
       text: z.string(),
       factsBlock: z.string(),
+      bodiesMentioned: z.array(z.string()),
+      wordCount: z.number(),
       context: z.string().optional().default(''),
       durationSeconds: z.number().optional(),
       budgetWords: z.number().optional(),
     }),
     outputSchema: z.object({
       text: z.string(),
+      bodiesMentioned: z.array(z.string()),
+      wordCount: z.number(),
     }),
     execute: async ({ inputData }) => {
       const facts: Record<string, number | string> = {};
@@ -111,7 +211,12 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
         check = validateText(text, facts);
         if (!check.ok) throw new Error(`model output failed validation: ${check.problems.join('; ')}`);
       }
-      return { text };
+      const words = text.split(/\s+/).filter(Boolean);
+      return {
+        text,
+        bodiesMentioned: extractMentioned(text, bodiesInFacts(JSON.stringify(facts))),
+        wordCount: words.length,
+      };
     },
   });
 
@@ -122,9 +227,14 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
       durationSeconds: z.number(),
       budgetWords: z.number(),
       context: z.string().optional().default(''),
+      latitude: z.number(),
+      longitude: z.number(),
+      timestamp: z.string(),
     }),
     outputSchema: z.object({
       text: z.string(),
+      bodiesMentioned: z.array(z.string()),
+      wordCount: z.number(),
     }),
   })
     .then(factsStep)

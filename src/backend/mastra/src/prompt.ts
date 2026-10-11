@@ -26,3 +26,31 @@ export function userPrompt(factsBlock: string, durationSeconds: number, budgetWo
     `phone down and look up.`
   );
 }
+
+/**
+ * Forced-tool brief: coordinates only, zero facts. The agent MUST call
+ * get-sky-snapshot first — there is nothing else to narrate from.
+ */
+export function agentBrief(
+  latitude: number,
+  longitude: number,
+  timestamp: string,
+  durationSeconds: number,
+  budgetWords: number,
+  context = '',
+): string {
+  const request = context.trim()
+    ? `The listener just asked: ${context.trim()} Answer that first, briefly.\n\n`
+    : '';
+  return (
+    `You are narrating tonight's sky for an observer at latitude ${latitude}, ` +
+    `longitude ${longitude}, at ${timestamp}, for about ${durationSeconds} seconds ` +
+    `of speech (roughly ${budgetWords} words).\n\n` +
+    `${request}Call get-sky-snapshot with these exact coordinates and timestamp ` +
+    `FIRST — it is the only source of positions. Narrate only what it returns, ` +
+    `using get-body-direction for any specific body the listener asks about. ` +
+    `Begin with the moon, then visible planets, then the brightest stars, then ` +
+    `one constellation to trace. End by telling the listener to put the phone ` +
+    `down and look up.`
+  );
+}

@@ -1,15 +1,17 @@
 """SkyWhisper API — FastAPI routes for snapshot, pack generation, and playback."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.backend.audio.tts import synthesize
@@ -83,6 +85,15 @@ async def sky_snapshot(req: PackRequest) -> dict:
 @app.post("/api/packs")
 async def generate_pack(req: PackRequest) -> JSONResponse:
     """Full pack: snapshot -> narration -> audio. Cached by 0.5-degree grid."""
+    snap = await _stage_snapshot(req)
+    script = await _stage_narration(req, snap)
+    ckey = _pack_key(req)
+    pack = await _stage_audio(req, snap, script, ckey)
+    return JSONResponse(pack)
+
+
+async def _stage_snapshot(req: PackRequest):
+    """Deterministic sky + best-effort weather. Raises HTTPException."""
     try:
         passes = await compute_passes(req.latitude, req.longitude, parse_timestamp(req.timestamp))
         snap = build_snapshot(req, satellite_passes=passes)
@@ -99,32 +110,40 @@ async def generate_pack(req: PackRequest) -> JSONResponse:
         snap.weather.label = weather["label"]
     except Exception:
         pass
+    return snap
+
+
+async def _stage_narration(req: PackRequest, snap) -> dict:
+    """Template script, upgraded by the model chain when one answers."""
+    from src.backend.narration.llm_provider import narrate_with_model, template_generation
 
     script = build_script(snap, req.duration_seconds)
-
     # Open-weight model path (Gemma / Ollama). Falls back to the deterministic
     # narrator on any failure — validated output only, never unvalidated text.
-    from src.backend.narration.llm_provider import (
-        chain_signature, narrate_with_model, template_generation,
-    )
-
     model_script = await narrate_with_model(snap, req.duration_seconds)
     if model_script is not None:
-        script = model_script
-    else:
-        script["fallback_used"] = True
-        script["model"] = "template"
-        script["provider"] = "template"
-        script["generation"] = template_generation()
+        return model_script
+    script["fallback_used"] = True
+    script["model"] = "template"
+    script["provider"] = "template"
+    script["generation"] = template_generation()
+    return script
 
-    # The key covers the whole configured chain, so adding or changing a
-    # stage can never be answered from a pack built by an older chain.
-    ckey = cache_key(
+
+def _pack_key(req: PackRequest) -> str:
+    """Cache key. Covers the whole configured chain, so adding or changing
+    a stage can never be answered from a pack built by an older chain."""
+    from src.backend.narration.llm_provider import chain_signature
+
+    return cache_key(
         req.latitude, req.longitude, req.timestamp,
         req.duration_seconds, os.getenv("ELEVEN_VOICE_ID", ""),
         f"{PACK_CACHE_VERSION}|{chain_signature()}",
     )
 
+
+async def _stage_audio(req: PackRequest, snap, script: dict, ckey: str) -> dict:
+    """Serve a cached pack, or render TTS and persist. Returns the pack dict."""
     meta_path = PACKS_DIR / f"{ckey}.json"
     audio_path = PACKS_DIR / f"{ckey}.mp3"
 
@@ -135,7 +154,7 @@ async def generate_pack(req: PackRequest) -> JSONResponse:
             if cached.get("audio", {}).get("available") and not audio_path.exists():
                 cached["audio"] = {"available": False, "reason": "cache miss on audio file"}
                 meta_path.write_text(json.dumps(cached, indent=2), encoding="utf-8")
-            return JSONResponse(cached)
+            return cached
         except Exception:
             pass  # corrupt cache entry — rebuild below
 
@@ -156,8 +175,90 @@ async def generate_pack(req: PackRequest) -> JSONResponse:
     }
 
     meta_path.write_text(json.dumps(pack, indent=2), encoding="utf-8")
+    return pack
 
-    return JSONResponse(pack)
+
+async def _pack_events(req: PackRequest) -> AsyncIterator[tuple[str, dict]]:
+    """Yield (event, payload) pairs for SSE. Cache hits emit one done event."""
+    ckey = _pack_key(req)
+    meta_path = PACKS_DIR / f"{ckey}.json"
+    if meta_path.exists():
+        try:
+            yield "done", json.loads(meta_path.read_text(encoding="utf-8"))
+            return
+        except Exception:
+            pass  # corrupt cache entry — rebuild below
+
+    snap = await _stage_snapshot(req)
+    yield "snapshot", {"ok": True}
+    script = await _stage_narration(req, snap)
+    yield "narration", {"provider": script.get("provider"), "model": script.get("model"),
+                        "orchestrator": script.get("orchestrator", "template")}
+    pack = await _stage_audio(req, snap, script, ckey)
+    yield "audio", {"available": bool(pack["audio"].get("available"))}
+    yield "done", pack
+
+
+def _sse(event: Optional[str], data: dict) -> bytes:
+    prefix = f"event: {event}\n" if event else ""
+    return f"{prefix}data: {json.dumps(data)}\n\n".encode("utf-8")
+
+
+@app.get("/api/packs/stream")
+async def stream_pack(
+    latitude: float, longitude: float, timestamp: str,
+    duration_seconds: int = 90, timezone: str = "UTC",
+    elevation_meters: float = 0.0,
+) -> StreamingResponse:
+    """Same pipeline as POST /api/packs, streamed as server-sent events.
+
+    Events: snapshot -> narration -> audio -> done (done carries the pack).
+    A cache hit emits a single done. Failures emit an error event. A
+    heartbeat comment flows during long model stages so proxies never
+    see an idle connection.
+    """
+    from pydantic import ValidationError
+
+    from src.shared.schemas import PackRequest as PR
+
+    try:
+        req = PR(latitude=latitude, longitude=longitude, timestamp=timestamp,
+                 timezone=timezone, duration_seconds=duration_seconds,
+                 elevation_meters=elevation_meters)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc.errors()))
+
+    async def gen() -> AsyncIterator[bytes]:
+        try:
+            gen_events = _pack_events(req)
+            pending: Optional[asyncio.Task] = None
+            try:
+                while True:
+                    if pending is None:
+                        pending = asyncio.ensure_future(gen_events.__anext__())
+                    done, _ = await asyncio.wait({pending}, timeout=15.0)
+                    if not done:
+                        yield b": heartbeat\n\n"
+                        continue
+                    pending = None
+                    try:
+                        event, payload = done.pop().result()
+                    except StopAsyncIteration:
+                        return
+                    yield _sse(event, payload)
+            finally:
+                if pending is not None and not pending.done():
+                    pending.cancel()
+                await gen_events.aclose()
+        except HTTPException as exc:
+            yield _sse("error", {"detail": exc.detail})
+        except Exception as exc:
+            yield _sse("error", {"detail": f"pack failed: {exc}"})
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/packs/{pack_id}/audio")

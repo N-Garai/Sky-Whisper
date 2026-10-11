@@ -51,10 +51,41 @@ Environment variables are optional. See [.env.example](.env.example):
 |---|---|
 | `ELEVENLABS_API_KEY` | TTS audio. Without it, the transcript is the deliverable |
 | `ELEVEN_VOICE_ID` | Voice selection |
-| `LLM_PROVIDER` | Narration mode: `template` (default, $0), `openai` (Gemma via any OpenAI-compatible endpoint), or `ollama` (local) |
-| `GEMMA_BASE_URL` / `GEMMA_API_KEY` / `GEMMA_MODEL` | Endpoint, key, and open-weight model for `LLM_PROVIDER=openai` |
-| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local daemon for `LLM_PROVIDER=ollama` (or `LOCAL_INFERENCE=true`) |
+| `LLM_PROVIDER` | `template` (default, $0) · `openai`/`gemma` (hosted chain) · `ollama` (local, or `LOCAL_INFERENCE=true`) |
+| `GEMMA_API_KEY` / `GEMMA_BASE_URL` | Google AI Studio key + OpenAI-compatible endpoint |
+| `GEMMA3_MODEL` / `GEMMA4_MODEL` | Chain rungs 1–2 (defaults: `gemma-3-27b-it`, `gemma-4-26b-a4b-it`; `GEMMA_MODEL` still works as the rung-1 fallback) |
+| `GROQ_API_KEY` / `GROQ_MODEL` | Chain rung 3 (default: `openai/gpt-oss-120b`) |
+| `NVIDIA_API_KEY` / `NVIDIA_MODEL` | Chain rung 4 (default: `google/gemma-7b`) |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local daemon for `LLM_PROVIDER=ollama` |
 | `SKYWHISPER_EPHEMERIS` | JPL kernel name (tries the full kernel first, falls back to the packaged kernel when offline) |
+
+## Model chain
+
+Narration runs an ordered fallback chain — first validated transcript wins, template narrator is the unbreakable last rung:
+
+1. Gemini API · Gemma 3 → 2. Gemini API · Gemma 4 → 3. Groq open-weight → 4. NVIDIA NIM → 5. template
+
+Each rung is tried through the Mastra workflow first, then direct HTTPS. Every number is validated against the computed snapshot; length is retried once, then accepted within a wide sanity band. Each pack records which rung answered (`narration.provider`, `orchestrator`, `generation`) so the UI can say exactly what narrated it — or why the template did.
+
+## Voice control
+
+A floating mic button enables hands-free control (Web Speech API — free, no key; screen-on listening, screen-off playback):
+
+- **Wake:** "hey whisper" opens a command window
+- **Describe:** "describe the sky", "how is it looking outside", "what's above me", "tell me about tonight" — generates (or replays) the pack and plays it
+- **Replay / pause / play / louder / quieter** work by voice; anything else substantial goes to the agent as a spoken answer with conversation memory
+- **Typed follow-ups** work in the same panel on browsers without mic support
+
+**Dark compass:** from any pack, "Point at the Sky" opens a pure-black overlay (OLED-dark) where the compass, vibration, and rising pitch guide your aim onto any visible body, with a spoken confirmation on lock. Screen-on is required — mobile browsers suspend sensors and audio capture on lock, so this is output-only by platform design.
+
+## Mastra harness
+
+`src/backend/mastra` (Apache-2.0) orchestrates model narration: a docent agent with real tools (`get-sky-snapshot` over localhost, `get-body-direction` for any named body, plus format/validate), a facts → narrate → validate workflow, per-rung endpoint pinning, and a zod narration envelope. The agent receives coordinates only and must call tools for positions — the trace shows genuine tool use. Build and self-test:
+
+```bash
+cd src/backend/mastra
+npm ci && npm run build && npm run selftest
+```
 
 ## Deploy
 
@@ -74,7 +105,7 @@ Twilight bands follow USNO conventions. Moon illumination is `(1 − cos E) / 2`
 python -m pytest tests/ -q
 ```
 
-87 tests: pure astronomy math, snapshot and narration validation (including anti-hallucination rejection), satellite propagation and degradation, Mastra bridge contract and orchestration order, and HTTP integration. The suite is hermetic — no network, no provider keys.
+121 tests: pure astronomy math, snapshot and narration validation (including anti-hallucination rejection), chain fallthrough and stage degradation, satellite propagation, Mastra bridge contract and orchestration order, voice endpoint behavior, and HTTP integration (including the SSE pack stream). The suite is hermetic — no network, no provider keys.
 
 ## Docs
 
