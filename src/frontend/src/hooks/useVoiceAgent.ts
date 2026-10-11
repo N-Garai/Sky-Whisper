@@ -14,6 +14,8 @@ export interface VoiceAgentState {
   listening: boolean;
   liveText: string;
   lastHeard: string;
+  /** Last matched intent ('none' when speech matched nothing — show a hint). */
+  lastIntent: string;
   error: string | null;
   start: () => void;
   stop: () => void;
@@ -60,6 +62,7 @@ export function useVoiceAgent(opts: VoiceAgentOptions): VoiceAgentState {
   const [listening, setListening] = useState(false);
   const [liveText, setLiveText] = useState('');
   const [lastHeard, setLastHeard] = useState('');
+  const [lastIntent, setLastIntent] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const recRef = useRef<Rec | null>(null);
@@ -74,6 +77,7 @@ export function useVoiceAgent(opts: VoiceAgentOptions): VoiceAgentState {
     setLiveText('');
     const windowOpen = Date.now() - wakeAt.current < COMMAND_WINDOW_MS;
     const intent: VoiceIntent = matchIntent(transcript, { commandWindowOpen: windowOpen });
+    setLastIntent(intent.type);
     const o = optsRef.current;
     switch (intent.type) {
       case 'wake':
@@ -182,5 +186,5 @@ export function useVoiceAgent(opts: VoiceAgentOptions): VoiceAgentState {
     }
   }, []);
 
-  return { supported, listening, liveText, lastHeard, error, start, stop };
+  return { supported, listening, liveText, lastHeard, lastIntent, error, start, stop };
 }

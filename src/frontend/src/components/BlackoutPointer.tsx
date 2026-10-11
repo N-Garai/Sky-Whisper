@@ -43,6 +43,9 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose }: BlackoutPointer
   const [loading, setLoading] = useState(!snapshot);
   const [locked, setLocked] = useState(false);
   const lockedSpoken = useRef<string | null>(null);
+  // One-shot voice question inside pointer mode.
+  const [micState, setMicState] = useState<'idle' | 'listening' | 'thinking' | 'error'>('idle');
+  const [spoken, setSpoken] = useState<string | null>(null);
 
   // Targets: visible planets, bright stars, Moon when up.
   useEffect(() => {
@@ -140,6 +143,92 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose }: BlackoutPointer
   const target = targets.find((t) => t.name === targetName) ?? null;
   const diff = target && heading !== null ? signedDiff(target.azimuth, heading) : null;
   const aligned = diff !== null && Math.abs(diff) < 8;
+
+  /**
+   * One-shot voice question: listen once (same browser engine as the main
+   * voice panel), send to /api/voice/answer, then speak the reply — device
+   * TTS audio when the server rendered it, speech synthesis otherwise.
+   * The dim transcript stays readable without lighting the field.
+   */
+  const askByVoice = async () => {
+    const w = window as any;
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+    if (!Ctor) {
+      setMicState('error');
+      return;
+    }
+    setMicState('listening');
+    setSpoken(null);
+    let transcript = '';
+    try {
+      transcript = await new Promise<string>((resolve, reject) => {
+        const rec = new Ctor();
+        rec.lang = 'en-US';
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        const kill = window.setTimeout(() => {
+          try { rec.stop(); } catch { /* already stopped */ }
+          reject(new Error('timeout'));
+        }, 15000);
+        rec.onresult = (e: any) => {
+          window.clearTimeout(kill);
+          resolve(String(e.results?.[0]?.[0]?.transcript ?? ''));
+        };
+        rec.onerror = (e: any) => {
+          window.clearTimeout(kill);
+          reject(new Error(String(e?.error ?? 'recognition')));
+        };
+        rec.onend = () => {
+          window.clearTimeout(kill);
+          reject(new Error('no-speech'));
+        };
+        rec.start();
+      });
+    } catch {
+      setMicState('error');
+      return;
+    }
+    if (!transcript.trim()) {
+      setMicState('error');
+      return;
+    }
+    setMicState('thinking');
+    try {
+      const res = await fetch('/api/voice/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude: lat, longitude: lon,
+          timestamp: new Date().toISOString(),
+          transcript,
+        }),
+      });
+      if (!res.ok) throw new Error(`server ${res.status}`);
+      const data = await res.json();
+      const reply = typeof data.reply === 'string' ? data.reply : '';
+      if (!reply) throw new Error('empty');
+      setSpoken(reply.length > 220 ? reply.slice(0, 220) + '…' : reply);
+      setMicState('idle');
+      if (typeof data.audioPath === 'string' && data.audioPath) {
+        await new Audio(data.audioPath).play().catch(() => speak(reply));
+      } else {
+        speak(reply);
+      }
+    } catch {
+      setMicState('error');
+    }
+  };
+
+  const speak = (text: string) => {
+    try {
+      window.speechSynthesis?.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1;
+      window.speechSynthesis?.speak(u);
+    } catch {
+      // speech unavailable — transcript stays on screen
+    }
+  };
 
   // Fresh heading for the interval: effects below re-run rarely, the ref never lies.
   const headingRef = useRef<number | null>(null);
@@ -266,7 +355,25 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose }: BlackoutPointer
                   {t.name}
                 </button>
               ))}
+              <button
+                onClick={() => void askByVoice()}
+                disabled={micState === 'listening' || micState === 'thinking'}
+                aria-label="Ask about the sky by voice"
+                className="shrink-0 rounded-full border border-[#7a1f1f] px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-[#c66] disabled:opacity-50"
+              >
+                {micState === 'listening' ? '● Listening' : micState === 'thinking' ? '…Asking' : '🎙 Ask'}
+              </button>
             </div>
+          )}
+          {spoken && (
+            <p className="max-w-[20rem] text-center text-[11px] leading-relaxed text-[#a33]">
+              {spoken}
+            </p>
+          )}
+          {micState === 'error' && (
+            <p className="max-w-[20rem] text-center text-[11px] leading-relaxed text-[#7a1f1f]">
+              Voice needs Chrome, Edge, or Safari with mic access — or ask from the main page.
+            </p>
           )}
           {loading && <p className="text-[11px] text-[#7a1f1f]">Reading tonight…</p>}
         </div>

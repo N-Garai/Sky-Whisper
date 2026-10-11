@@ -179,6 +179,12 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
                 {agent.lastHeard && (
                   <p className="text-[11px] text-white/35 truncate">Heard: {agent.lastHeard}</p>
                 )}
+                {agent.lastIntent === 'none' && agent.lastHeard && (
+                  <p className="text-[11px] leading-relaxed text-amber-200/70">
+                    Didn&rsquo;t catch a command in that — try “describe the sky”, “repeat that”,
+                    or type below.
+                  </p>
+                )}
                 {ask === 'thinking' && <p className="text-xs text-amber-200/80">Asking the agent…</p>}
                 {ask === 'error' && (
                   <p className="text-xs text-red-300/80">The agent didn&rsquo;t answer — try again.</p>

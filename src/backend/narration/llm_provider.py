@@ -1,11 +1,21 @@
 """Open-weight LLM narration with an ordered model fallback chain.
 
 Chain (first validated transcript wins; each stage is OpenAI-compatible):
-  1. Gemini API  - Gemma 3   (GEMMA3_MODEL)
-  2. Gemini API  - Gemma 4   (GEMMA4_MODEL)
-  3. Groq        - open-weight model (GROQ_MODEL)
-  4. NVIDIA NIM  - open-weight model (NVIDIA_MODEL)
+  1. Gemini API, fast rung  (GEMMA3_MODEL, default gemma-4-26b-a4b-it)
+  2. Gemini API, large rung (GEMMA4_MODEL, default gemma-4-31b-it)
+  3. Groq        open-weight (GROQ_MODEL, default openai/gpt-oss-120b)
+  4. NVIDIA NIM  open-weight (NVIDIA_MODEL, default meta/llama-3.1-8b-instruct)
   5. template narrator (deterministic, always available) - the caller's fallback
+
+Why these defaults (verified October 2026 against live provider errors):
+Gemini API 404s unknown IDs with "models/<id> is not found" — Gemma 3 IDs
+currently do exactly that, while gemma-4-26b-a4b-it answers and
+gemma-4-31b-it is the documented sibling. Point GEMMA3_MODEL at any ID and
+the rung follows; identical IDs are tried once via dedupe. Groq retired
+gemma2-9b-it (Oct 2025 shutdown); gpt-oss-120b is their recommended
+open-weight replacement. meta/llama-3.1-8b-instruct is NVIDIA's canonical
+NIM example; confirm yours with:
+  curl $NVIDIA_BASE_URL/models -H "Authorization: Bearer $NVIDIA_API_KEY"
 
 A stage is included only when its key is set. LOCAL_INFERENCE=true or
 LLM_PROVIDER=ollama replaces the hosted chain with a local Ollama daemon.
@@ -68,13 +78,14 @@ def _chain() -> list[dict[str, str]]:
     stages: list[dict[str, str]] = []
     gemini_key = os.getenv("GEMMA_API_KEY", "").strip()
     if gemini_key:
-        gemma3 = (os.getenv("GEMMA3_MODEL") or os.getenv("GEMMA_MODEL") or "gemma-3-27b-it").strip()
-        stages.append({"name": "gemini-gemma3", "label": "Gemma 3 (Gemini API)",
+        gemma_fast = (os.getenv("GEMMA3_MODEL") or os.getenv("GEMMA_MODEL") or "gemma-4-26b-a4b-it").strip()
+        stages.append({"name": "gemini-fast", "label": f"Gemini {gemma_fast}",
                        "base_url": GEMINI_BASE,
-                       "model": gemma3, "api_key": gemini_key})
-        stages.append({"name": "gemini-gemma4", "label": "Gemma 4 (Gemini API)",
+                       "model": gemma_fast, "api_key": gemini_key})
+        gemma_large = os.getenv("GEMMA4_MODEL", "gemma-4-31b-it").strip()
+        stages.append({"name": "gemini-large", "label": f"Gemini {gemma_large}",
                        "base_url": GEMINI_BASE,
-                       "model": os.getenv("GEMMA4_MODEL", "gemma-4-26b-a4b-it").strip(), "api_key": gemini_key})
+                       "model": gemma_large, "api_key": gemini_key})
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     if groq_key:
         # gemma2-9b-it was retired by Groq (2025-10 shutdown); gpt-oss-120b
@@ -84,11 +95,12 @@ def _chain() -> list[dict[str, str]]:
                        "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "api_key": groq_key})
     nvidia_key = os.getenv("NVIDIA_API_KEY", "").strip()
     if nvidia_key:
-        # google/gemma-7b is the model in NVIDIA's own NIM API reference
-        # examples, so it is the safest served default; override freely.
+        # meta/llama-3.1-8b-instruct is NVIDIA's canonical NIM example and
+        # the likeliest served ID; verify yours against /v1/models and
+        # override with NVIDIA_MODEL (unknown IDs 404 as plain text).
         stages.append({"name": "nvidia-nim", "label": "NVIDIA NIM",
                        "base_url": os.getenv("NVIDIA_BASE_URL", NVIDIA_BASE),
-                       "model": os.getenv("NVIDIA_MODEL", "google/gemma-7b"), "api_key": nvidia_key})
+                       "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct"), "api_key": nvidia_key})
     return stages
 
 
@@ -117,6 +129,23 @@ def _length_bands(budget: int) -> tuple[int, int, int, int]:
     stuck on template. Anything outside the wide band is a degenerate runaway.
     """
     return budget - 15, budget + 15, max(60, budget // 3), budget * 3
+
+
+def _allowed_facts(snap: SkySnapshot, duration_seconds: int, budget: int) -> dict:
+    """Snapshot facts plus the prompt's own numbers.
+
+    The prompt states the duration and word budget in digits; a model that
+    echoes "between 203 and 233 words" is quoting our instructions, not
+    hallucinating coordinates. Without these in the allow-list, every
+    length-aware narration fails validation on its own budget numbers.
+    """
+    facts = snapshot_facts(snap)
+    lo, hi = budget - 15, budget + 15
+    facts["narration.duration_seconds"] = duration_seconds
+    facts["narration.word_budget"] = budget
+    facts["narration.word_min"] = lo
+    facts["narration.word_max"] = hi
+    return facts
 
 
 def _facts_block(snap: SkySnapshot) -> str:
@@ -203,11 +232,12 @@ async def _stage_text(
     """
     budget = word_budget(duration_seconds)
     lo, hi, wide_lo, wide_hi = _length_bands(budget)
+    facts = _allowed_facts(snap, duration_seconds, budget)
     user = _user_prompt(snap, duration_seconds, extra_context)
 
     text = await _chat(cfg, SYSTEM_PROMPT, user, errors)
     if not text or len(text) < 120:
-        errors.append("reply empty or too short")
+        errors.append(f"reply empty or too short ({len(text or '')} chars)")
         return None
 
     if not (lo <= len(text.split()) <= hi):
@@ -303,7 +333,7 @@ async def narrate_with_model(
         return None
 
     budget = word_budget(duration_seconds)
-    facts = snapshot_facts(snap)
+    facts = _allowed_facts(snap, duration_seconds, budget)
     lo, hi, wide_lo, wide_hi = _length_bands(budget)
     attempts: list[dict[str, str]] = []
     tried_models: set[str] = set()

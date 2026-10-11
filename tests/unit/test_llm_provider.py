@@ -60,9 +60,9 @@ def test_no_keys_means_template_only(clean_env):
 def test_chain_order_gemini_gemma3_then_gemma4(clean_env):
     clean_env.setenv("GEMMA_API_KEY", "k")
     names = [c["name"] for c in llm_provider._chain()]
-    assert names == ["gemini-gemma3", "gemini-gemma4"]
+    assert names == ["gemini-fast", "gemini-large"]
     models = [c["model"] for c in llm_provider._chain()]
-    assert models == ["gemma-3-27b-it", "gemma-4-26b-a4b-it"]
+    assert models == ["gemma-4-26b-a4b-it", "gemma-4-31b-it"]
 
 
 def test_groq_and_nvidia_join_only_when_keyed(clean_env):
@@ -70,7 +70,7 @@ def test_groq_and_nvidia_join_only_when_keyed(clean_env):
     clean_env.setenv("GROQ_API_KEY", "g")
     clean_env.setenv("NVIDIA_API_KEY", "n")
     names = [c["name"] for c in llm_provider._chain()]
-    assert names == ["gemini-gemma3", "gemini-gemma4", "groq", "nvidia-nim"]
+    assert names == ["gemini-fast", "gemini-large", "groq", "nvidia-nim"]
 
 
 def test_only_groq_keyed_skips_gemini(clean_env):
@@ -94,19 +94,20 @@ def test_first_passing_stage_wins(snapshot, clean_env):
     with patch.object(llm_provider, "_chat", return_value=good) as chat:
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is not None
-    assert result["provider"] == "gemini-gemma3"
+    assert result["provider"] == "gemini-fast"
+    assert result["generation"]["label"] == "Gemini gemma-4-26b-a4b-it"
     assert chat.call_count == 1
 
 
 def test_failed_stage_moves_to_next(snapshot, clean_env):
-    """Gemma 3 errors, Gemma 4 produces a valid transcript."""
+    """Gemini fast errors, Gemini large produces a valid transcript."""
     clean_env.setenv("GEMMA_API_KEY", "k")
     good = grounded_for(snapshot)
     responses = iter([None, good])
     with patch.object(llm_provider, "_chat", side_effect=lambda *a, **k: next(responses)):
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is not None
-    assert result["provider"] == "gemini-gemma4"
+    assert result["provider"] == "gemini-large"
 
 
 def test_all_stages_failing_falls_back_to_template(snapshot, clean_env):
@@ -119,7 +120,7 @@ def test_all_stages_failing_falls_back_to_template(snapshot, clean_env):
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is None
     attempts = llm_provider.last_attempts()
-    assert [a["stage"] for a in attempts] == ["gemini-gemma3", "gemini-gemma4", "groq"]
+    assert [a["stage"] for a in attempts] == ["gemini-fast", "gemini-large", "groq"]
     assert all(a["status"] == "failed" for a in attempts)
     assert llm_provider.template_generation()["status"] == "template"
 
@@ -208,9 +209,9 @@ def test_duplicate_model_rung_is_skipped(snapshot, clean_env):
     from src.backend.narration import mastra_client
 
     cfg = [
-        {"name": "gemini-gemma3", "base_url": "https://example.test",
+        {"name": "gemini-fast", "base_url": "https://example.test",
          "model": "gemma-4-26b-a4b-it", "api_key": "k"},
-        {"name": "gemini-gemma4", "base_url": "https://example.test",
+        {"name": "gemini-large", "base_url": "https://example.test",
          "model": "gemma-4-26b-a4b-it", "api_key": "k"},
         {"name": "groq", "base_url": "https://example.test",
          "model": "openai/gpt-oss-120b", "api_key": "g"},
@@ -224,7 +225,7 @@ def test_duplicate_model_rung_is_skipped(snapshot, clean_env):
     assert result["provider"] == "groq"
     assert chat.call_count == 2
     skips = [a for a in result["generation"]["attempts"] if a["status"] == "skipped"]
-    assert len(skips) == 1 and skips[0]["stage"] == "gemini-gemma4"
+    assert len(skips) == 1 and skips[0]["stage"] == "gemini-large"
 
 
 def test_gemma_model_env_falls_back_to_gemma3(clean_env):
@@ -242,4 +243,18 @@ def test_chain_defaults_are_live_ids(clean_env):
     clean_env.setenv("NVIDIA_API_KEY", "n")
     models = {c["name"]: c["model"] for c in llm_provider._chain()}
     assert models["groq"] == "openai/gpt-oss-120b"
-    assert models["nvidia-nim"] == "google/gemma-7b"
+    assert models["nvidia-nim"] == "meta/llama-3.1-8b-instruct"
+
+
+def test_budget_echo_is_allowed_not_hallucination(snapshot, clean_env):
+    """A model quoting the prompt's own budget numbers must not be rejected."""
+    base = grounded_for(snapshot)
+    # grounded_for is ~221 words; appending the echo keeps it in-band.
+    text = base + " This fits between 203 and 233 words."
+    cfg = [{"name": "gemini-fast", "base_url": "https://example.test",
+            "model": "gemma-4-26b-a4b-it", "api_key": "k"}]
+    with patch.object(llm_provider, "_chain", return_value=cfg), patch.object(
+        llm_provider, "_chat", return_value=text):
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    assert result is not None
+    assert result["provider"] == "gemini-fast"

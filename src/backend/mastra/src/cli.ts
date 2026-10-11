@@ -81,6 +81,13 @@ async function selftest(): Promise<void> {
     failures.push(`snapshotUrl mismatch: ${snapshotUrl(' 8080 ')}`);
   }
 
+  // Budget echoes are instruction quotes, not hallucinations (mirrors Python).
+  const budgeted = validateText(
+    'aim for 218 words between 203 and 233 across 90 seconds',
+    { ...facts, 'narration.word_budget': 218, 'narration.word_min': 203, 'narration.word_max': 233, 'narration.duration_seconds': 90 },
+  );
+  if (!budgeted.ok) failures.push(`validator rejected budget echo: ${budgeted.problems.join('; ')}`);
+
   // Workflow object commits (shape check, no model call).
   const cfg = { provider: 'ollama' as const, modelId: 'gemma3:1b', url: 'http://127.0.0.1:11434/v1', apiKey: '' };
   try {

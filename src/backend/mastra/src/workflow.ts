@@ -199,6 +199,17 @@ export function buildNarrationWorkflow(cfg: ProviderConfig) {
           facts[line.slice(0, eq)] = Number.isNaN(n) ? v : n;
         }
       }
+      // The prompt states the duration and word budget in digits; a model
+      // quoting them back is echoing instructions, not hallucinating.
+      // Python merges the same numbers before its final gate.
+      if (typeof inputData.budgetWords === 'number' && inputData.budgetWords > 0) {
+        facts['narration.word_budget'] = inputData.budgetWords;
+        facts['narration.word_min'] = inputData.budgetWords - 15;
+        facts['narration.word_max'] = inputData.budgetWords + 15;
+      }
+      if (typeof inputData.durationSeconds === 'number' && inputData.durationSeconds > 0) {
+        facts['narration.duration_seconds'] = inputData.durationSeconds;
+      }
       let text = inputData.text;
       if (!text || text.length < 120) throw new Error('model returned unusable text');
       let check = validateText(text, facts);
