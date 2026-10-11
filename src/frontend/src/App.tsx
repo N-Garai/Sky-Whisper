@@ -57,6 +57,7 @@ export default function App() {
 
   // Register the service worker so the pack survives airplane mode.
   useEffect(() => {
+    console.info('[SkyWhisper] build', __BUILD_SHA__);
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {
         // registration failure is non-fatal — the app still works online

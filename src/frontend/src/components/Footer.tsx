@@ -95,7 +95,7 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/[0.07] pt-7 sm:flex-row">
           <p className="font-mono text-[0.58rem] uppercase tracking-[0.2em] text-white/25">
-            © {new Date().getFullYear()} SkyWhisper
+            © {new Date().getFullYear()} SkyWhisper · build {__BUILD_SHA__}
           </p>
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
