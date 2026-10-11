@@ -85,12 +85,12 @@ def _chain() -> list[dict[str, str]]:
     gemini_key = os.getenv("GEMMA_API_KEY", "").strip()
     if gemini_key:
         gemma_fast = (os.getenv("GEMMA3_MODEL") or os.getenv("GEMMA_MODEL") or "gemma-4-26b-a4b-it").strip()
-        stages.append({"name": "gemini-fast", "label": f"Gemini {gemma_fast}",
-                       "base_url": GEMINI_BASE,
-                       "model": gemma_fast, "api_key": gemini_key})
         gemma_large = os.getenv("GEMMA4_MODEL", "gemma-4-31b-it").strip()
+        stages.append({"name": "gemini-fast", "label": f"Gemini {gemma_fast}",
+                       "base_url": GEMINI_BASE, "fallback_model": gemma_large,
+                       "model": gemma_fast, "api_key": gemini_key})
         stages.append({"name": "gemini-large", "label": f"Gemini {gemma_large}",
-                       "base_url": GEMINI_BASE,
+                       "base_url": GEMINI_BASE, "fallback_model": gemma_fast,
                        "model": gemma_large, "api_key": gemini_key})
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     if groq_key:
@@ -98,14 +98,17 @@ def _chain() -> list[dict[str, str]]:
         # is Groq's recommended open-weight replacement (131K context).
         stages.append({"name": "groq", "label": "Groq",
                        "base_url": os.getenv("GROQ_BASE_URL", GROQ_BASE),
+                       "fallback_model": "openai/gpt-oss-20b",
                        "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "api_key": groq_key})
     nvidia_key = os.getenv("NVIDIA_API_KEY", "").strip()
     if nvidia_key:
-        # meta/llama-3.1-8b-instruct is NVIDIA's canonical NIM example and
-        # the likeliest served ID; verify yours against /v1/models and
-        # override with NVIDIA_MODEL (unknown IDs 404 as plain text).
+        # meta/llama-3.1-8b-instruct is NVIDIA's canonical NIM example, but
+        # NIM cloud retires IDs without warning (410 Gone observed in the
+        # field) — confirm yours against /v1/models, override with
+        # NVIDIA_MODEL, and the rung falls back to google/gemma-2-9b-it.
         stages.append({"name": "nvidia-nim", "label": "NVIDIA NIM",
                        "base_url": os.getenv("NVIDIA_BASE_URL", NVIDIA_BASE),
+                       "fallback_model": "google/gemma-2-9b-it",
                        "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct"), "api_key": nvidia_key})
     return stages
 
@@ -231,71 +234,109 @@ async def _chat(cfg: dict[str, str], system: str, user: str,
         return None
 
 
+# Error signatures that mean "this model ID is not served here" rather than
+# "the provider is unhappy". Only these trigger a fallback-model switch —
+# anything else (rate limits, timeouts, bad prose) moves to the next rung.
+_MISSING_MODEL_HINTS = (
+    "404", "410", "not found", "no endpoints", "gone",
+    "end of life", "does not exist",
+)
+
+
+def _model_missing(errors: list[str]) -> bool:
+    blob = " | ".join(errors).lower()
+    return any(h in blob for h in _MISSING_MODEL_HINTS)
+
+
 async def _stage_text(
     cfg: dict[str, str], snap: SkySnapshot, duration_seconds: int, facts: dict,
     errors: list[str], extra_context: str | None = None,
-    rung_over: Any = None,
-) -> str | None:
-    """Run one chain stage. Returns validated text, or None with reasons in `errors`.
+    rung_over: Any = None, tried: set[str] | None = None,
+) -> tuple[str | None, str]:
+    """Run one chain stage. Returns (validated text or None, model ID used).
 
-    The same length and fact gates apply to every stage, so a bad stage is
-    skipped rather than shipped. `rung_over`, when given, cancels retries
-    once this rung has spent its time share.
+    The same length and fact gates apply to every attempt, so a bad stage
+    is skipped rather than shipped. `rung_over`, when given, cancels retries
+    once this rung has spent its time share. When the provider answers that
+    the model ID is not served (404/410/Gone family), the rung's fallback
+    model gets one attempt — model IDs rot, and a retired default must not
+    sink the whole rung.
     """
     def _expired() -> bool:
         try:
             return bool(rung_over and rung_over())
         except Exception:
             return False
-    budget = word_budget(duration_seconds)
-    lo, hi, wide_lo, wide_hi = _length_bands(budget)
-    facts = _allowed_facts(snap, duration_seconds, budget)
-    user = _user_prompt(snap, duration_seconds, extra_context)
 
-    text = await _chat(cfg, SYSTEM_PROMPT, user, errors)
-    if not text or len(text) < 120:
-        errors.append(f"reply empty or too short ({len(text or '')} chars)")
-        return None
+    async def _attempt(model_id: str) -> str | None:
+        attempt_cfg = {**cfg, "model": model_id}
+        budget = word_budget(duration_seconds)
+        lo, hi, wide_lo, wide_hi = _length_bands(budget)
+        user = _user_prompt(snap, duration_seconds, extra_context)
 
-    if not (lo <= len(text.split()) <= hi):
-        if _expired():
-            errors.append("rung budget exhausted before length retry")
-            return None
-        retry = (
-            user
-            + f"\n\nYour previous attempt had {len(text.split())} words; "
-            + f"it must be {lo} to {hi}. Rewrite it to that length."
-        )
-        text = await _chat(cfg, SYSTEM_PROMPT, retry, errors)
+        text = await _chat(attempt_cfg, SYSTEM_PROMPT, user, errors)
         if not text or len(text) < 120:
-            errors.append("reply empty or too short after retry")
-            return None
-        # One retry is all the budget buys. A fact-clean narration inside
-        # the wide band still ships — only degenerate runaways are dropped.
-        if not ((lo <= len(text.split()) <= hi) or (wide_lo <= len(text.split()) <= wide_hi)):
-            errors.append("length out of range after retry")
-            return None
+            if _expired():
+                errors.append("rung budget exhausted before empty retry")
+                return None
+            # One immediate retry: empty replies are usually transient.
+            text = await _chat(attempt_cfg, SYSTEM_PROMPT, user, errors)
+            if not text or len(text) < 120:
+                errors.append(f"reply empty or too short ({len(text or '')} chars)")
+                return None
 
-    ok, problems = validate_narration(text, facts)
-    if not ok:
-        if _expired():
-            errors.append("rung budget exhausted before validation retry")
-            return None
-        retry = (
-            user
-            + "\n\nYour previous output was rejected for these reasons and must not be repeated: "
-            + "; ".join(problems)
-            + ". Rewrite using only the facts above."
-        )
-        text = await _chat(cfg, SYSTEM_PROMPT, retry, errors)
-        if not text:
-            errors.append("no text after validation retry")
-            return None
+        if not (lo <= len(text.split()) <= hi):
+            if _expired():
+                errors.append("rung budget exhausted before length retry")
+                return None
+            retry = (
+                user
+                + f"\n\nYour previous attempt had {len(text.split())} words; "
+                + f"it must be {lo} to {hi}. Rewrite it to that length."
+            )
+            text = await _chat(attempt_cfg, SYSTEM_PROMPT, retry, errors)
+            if not text or len(text) < 120:
+                errors.append("reply empty or too short after retry")
+                return None
+            # One retry is all the budget buys. A fact-clean narration inside
+            # the wide band still ships — only degenerate runaways are dropped.
+            if not ((lo <= len(text.split()) <= hi) or (wide_lo <= len(text.split()) <= wide_hi)):
+                errors.append("length out of range after retry")
+                return None
+
         ok, problems = validate_narration(text, facts)
         if not ok:
-            errors.append("failed validation: " + "; ".join(problems))
-            return None
-    return text
+            if _expired():
+                errors.append("rung budget exhausted before validation retry")
+                return None
+            retry = (
+                user
+                + "\n\nYour previous output was rejected for these reasons and must not be repeated: "
+                + "; ".join(problems)
+                + ". Rewrite using only the facts above."
+            )
+            text = await _chat(attempt_cfg, SYSTEM_PROMPT, retry, errors)
+            if not text:
+                errors.append("no text after validation retry")
+                return None
+            ok, problems = validate_narration(text, facts)
+            if not ok:
+                errors.append("failed validation: " + "; ".join(problems))
+                return None
+        return text
+
+    tried_here = tried if tried is not None else set()
+    result = await _attempt(cfg["model"])
+    if result is not None:
+        return result, cfg["model"]
+    fb = (cfg.get("fallback_model") or "").strip()
+    if fb and fb not in tried_here and _model_missing(errors):
+        tried_here.add(fb)
+        errors.append(f"switching to fallback model {fb}")
+        result = await _attempt(fb)
+        if result is not None:
+            return result, fb
+    return None, cfg["model"]
 
 
 def _generation(stage: dict[str, str] | None, attempts: list[dict[str, str]],
@@ -429,9 +470,16 @@ async def narrate_with_model(
                              "reason": f"rung budget ({RUNG_BUDGET_S}s) exhausted"})
             continue
         errors: list[str] = []
-        text = await _stage_text(cfg, snap, duration_seconds, facts, errors, extra_context, _rung_over)
+        text, used_model = await _stage_text(
+            cfg, snap, duration_seconds, facts, errors, extra_context,
+            _rung_over, tried_models,
+        )
         if text is not None:
-            return _result(snap, text, facts, budget, cfg, "direct", attempts)
+            if used_model != cfg["model"]:
+                attempts.append({"stage": cfg["name"], "status": "recovered",
+                                 "reason": f"primary {cfg['model']} unserved; answered by {used_model}"})
+            return _result(snap, text, facts, budget,
+                           {**cfg, "model": used_model}, "direct", attempts)
         attempts.append({"stage": cfg["name"], "status": "failed",
                          "reason": "; ".join(errors) or "unknown"})
 

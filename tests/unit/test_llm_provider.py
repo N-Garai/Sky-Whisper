@@ -103,7 +103,7 @@ def test_failed_stage_moves_to_next(snapshot, clean_env):
     """Gemini fast errors, Gemini large produces a valid transcript."""
     clean_env.setenv("GEMMA_API_KEY", "k")
     good = grounded_for(snapshot)
-    responses = iter([None, good])
+    responses = iter([None, None, good])
     with patch.object(llm_provider, "_chat", side_effect=lambda *a, **k: next(responses)):
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is not None
@@ -216,14 +216,14 @@ def test_duplicate_model_rung_is_skipped(snapshot, clean_env):
         {"name": "groq", "base_url": "https://example.test",
          "model": "openai/gpt-oss-120b", "api_key": "g"},
     ]
-    responses = iter([None, grounded_for(snapshot)])
+    responses = iter([None, None, grounded_for(snapshot)])
     with patch.object(mastra_client, "is_available", return_value=False), patch.object(
         llm_provider, "_chain", return_value=cfg), patch.object(
         llm_provider, "_chat", side_effect=lambda *a, **k: next(responses)) as chat:
         result = asyncio.run(narrate_with_model(snapshot, 90))
     assert result is not None
     assert result["provider"] == "groq"
-    assert chat.call_count == 2
+    assert chat.call_count == 3
     skips = [a for a in result["generation"]["attempts"] if a["status"] == "skipped"]
     assert len(skips) == 1 and skips[0]["stage"] == "gemini-large"
 
@@ -305,3 +305,80 @@ def test_prompt_never_asks_for_counting(snapshot):
     assert "Count your words" not in prompt
     assert "EXACTLY" not in prompt
     assert "enumerate" in prompt
+
+
+def test_empty_reply_gets_one_retry_then_wins(snapshot):
+    """A transient empty reply is retried once instead of killing the rung."""
+    from src.backend.narration import mastra_client
+
+    good = grounded_for(snapshot)
+    responses = iter([None, good])
+    cfg = [{"name": "groq", "base_url": "https://example.test",
+            "model": "openai/gpt-oss-120b", "api_key": "g"}]
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chain", return_value=cfg), patch.object(
+        llm_provider, "_chat", side_effect=lambda *a, **k: next(responses)) as chat:
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    assert result is not None
+    assert result["provider"] == "groq"
+    assert chat.call_count == 2
+
+
+def test_retired_model_id_falls_back_within_rung(snapshot):
+    """Production failure, pinned: a 404/Gone model ID switches to the
+    rung's fallback instead of failing the rung (or the pack)."""
+    from src.backend.narration import mastra_client
+
+    async def gone_then_ok(url, headers, body):
+        # First ID retired, fallback serves.
+        if body["model"] == "meta/llama-3.1-8b-instruct":
+            return None, ["HTTP 404: 404 page not found"]
+        return grounded_for(snapshot), []
+
+    calls: list[str] = []
+
+    async def fake_chat(cfg, system, user, errors):
+        text, errs = await gone_then_ok(None, None, {"model": cfg["model"]})
+        errors.extend(errs)
+        if text is None:
+            errors.append("HTTP 404: 404 page not found")
+        return text
+
+    cfg = [{"name": "nvidia-nim", "base_url": "https://example.test",
+            "model": "meta/llama-3.1-8b-instruct",
+            "fallback_model": "google/gemma-2-9b-it", "api_key": "n"}]
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chain", return_value=cfg), patch.object(
+        llm_provider, "_chat", side_effect=fake_chat):
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    # The fallback answers, and the win is recorded — not silent.
+    assert result is not None
+    assert result["model"] == "google/gemma-2-9b-it"
+    rec = [a for a in result["generation"]["attempts"] if a["status"] == "recovered"]
+    assert len(rec) == 1 and "meta/llama-3.1-8b-instruct" in rec[0]["reason"]
+
+
+def test_fallback_win_reports_fallback_model(snapshot):
+    """When the fallback answers, the result names it — never the dead ID."""
+    from src.backend.narration import mastra_client
+
+    good = grounded_for(snapshot)
+    calls: list[str] = []
+
+    async def fake_chat(cfg, system, user, errors):
+        calls.append(cfg["model"])
+        if cfg["model"] == "meta/llama-3.1-8b-instruct":
+            errors.append("HTTP 410: Gone: the model has reached its end of life")
+            return None
+        return good
+
+    cfg = [{"name": "nvidia-nim", "base_url": "https://example.test",
+            "model": "meta/llama-3.1-8b-instruct",
+            "fallback_model": "google/gemma-2-9b-it", "api_key": "n"}]
+    with patch.object(mastra_client, "is_available", return_value=False), patch.object(
+        llm_provider, "_chain", return_value=cfg), patch.object(
+        llm_provider, "_chat", side_effect=fake_chat):
+        result = asyncio.run(narrate_with_model(snapshot, 90))
+    assert result is not None
+    assert result["model"] == "google/gemma-2-9b-it"
+    assert calls[0] == "meta/llama-3.1-8b-instruct"
