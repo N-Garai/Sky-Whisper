@@ -400,6 +400,7 @@ export default function App() {
             setPointerOpen(false);
             voiceReplay();
           }}
+          transport={transport}
         />
       </div>
     </div>

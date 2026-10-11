@@ -74,7 +74,20 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
   const agent = useVoiceAgent({
     onDescribe,
     onReplay,
-    onTransport,
+    // Transport reaches the pack player through App AND this panel's own
+    // reply element: without the local half, "stop" pauses nothing while
+    // an answer is talking.
+    onTransport: (action) => {
+      try {
+        if (action === 'pause') replyAudioRef.current?.pause();
+        else if (replyAudioRef.current?.paused && replyAudioRef.current?.src) {
+          void replyAudioRef.current.play().catch(() => {});
+        }
+      } catch {
+        // no reply element — pack player still gets the command below
+      }
+      onTransport(action);
+    },
     onVolume,
     onAsk: (query) => void askAgent(query),
   });

@@ -13,10 +13,11 @@ interface BlackoutPointerProps {
   lat: number;
   lon: number;
   onClose: () => void;
-  /** Pause/play reach the narration player underneath without leaving the dark. */
   onTransport: (action: 'play' | 'pause') => void;
-  /** Replay exits the dark first — the countdown must stay visible. */
   onReplay: () => void;
+  /** Same voice-transport signal the player obeys; pauses/resumes THIS
+      view's reply audio too, so "stop" stops what you actually hear. */
+  transport?: { action: 'play' | 'pause' | 'volume'; dir?: 'up' | 'down'; n: number } | null;
 }
 
 function wrapDeg(deg: number): number {
@@ -39,7 +40,7 @@ function signedDiff(targetAz: number, heading: number): number {
  * Nothing here emits meaningful light: all chrome is deep red on black,
  * kept tiny and dim. Keep this view open; the compass dies with it.
  */
-export function BlackoutPointer({ snapshot, lat, lon, onClose, onTransport, onReplay }: BlackoutPointerProps) {
+export function BlackoutPointer({ snapshot, lat, lon, onClose, onTransport, onReplay, transport = null }: BlackoutPointerProps) {
   const [targets, setTargets] = useState<PointerTarget[]>([]);
   const [targetName, setTargetName] = useState<string | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
@@ -108,13 +109,22 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose, onTransport, onRe
   const askAgent = async (query: string) => {
     setMicState('thinking');
     try {
+      try {
+        replyAudio.current?.pause();
+      } catch {
+        // nothing playing — nothing to stop
+      }
+      // Anchor the question to what the phone is pointed at: without this,
+      // "tell me more about Saturn" arrives with no antecedent and the
+      // answer drifts generic.
+      const pointing = targetRef.current?.name ?? targetName;
       const res = await fetch('/api/voice/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           latitude: lat, longitude: lon,
           timestamp: new Date().toISOString(),
-          transcript: query,
+          transcript: pointing ? `Pointing at ${pointing}. ${query}` : query,
           history: lastExchange.current ? [lastExchange.current] : [],
         }),
       });
@@ -126,7 +136,13 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose, onTransport, onRe
       setSpoken(reply.length > 220 ? reply.slice(0, 220) + '…' : reply);
       setMicState('idle');
       if (typeof data.audioPath === 'string' && data.audioPath) {
-        await new Audio(data.audioPath).play().catch(() => speak(reply));
+        try {
+          replyAudio.current?.pause();
+        } catch {
+          // no previous reply — nothing to stop
+        }
+        replyAudio.current = new Audio(data.audioPath);
+        await replyAudio.current.play().catch(() => speak(reply));
       } else {
         speak(reply);
       }
@@ -134,6 +150,28 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose, onTransport, onRe
       setMicState('error');
     }
   };
+
+  // A persistent handle on THIS view's reply audio: without it, "stop"
+  // pauses the narration player while the answer keeps talking over it.
+  const replyAudio = useRef<HTMLAudioElement | null>(null);
+
+  // Obey transport like the player does — pause/play what you hear here.
+  const transportSeen = useRef(0);
+  useEffect(() => {
+    if (!transport || transport.n === transportSeen.current) return;
+    transportSeen.current = transport.n;
+    const el = replyAudio.current;
+    if (!el) return;
+    try {
+      if (transport.action === 'pause') {
+        el.pause();
+      } else if (transport.action === 'play' && el.paused && el.src) {
+        void el.play().catch(() => {});
+      }
+    } catch {
+      // audio element gone — nothing to command
+    }
+  }, [transport]);
 
   const askByVoice = async () => {
     setMicState('listening');
