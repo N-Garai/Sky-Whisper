@@ -17,7 +17,10 @@ import { useGeolocation } from './hooks/useGeolocation';
 
 function storedLocChoice(): string | null {
   try {
-    return localStorage.getItem('skywhisper-loc');
+    const v = localStorage.getItem('skywhisper-loc');
+    // Only real choices suppress the gate. Anything else (including stale
+    // or foreign values under this key) means "not asked yet".
+    return v === 'auto' || v === 'manual' ? v : null;
   } catch {
     return null;
   }
@@ -250,13 +253,22 @@ export default function App() {
                               : 'No GPS fix — using defaults'}
                         </p>
                         {!geo.loading && (
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => geo.request()}
                             className="rounded-full border border-amber-400/40 px-3 py-1 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-amber-300 hover:bg-amber-400/10 transition-colors"
                           >
                             Retry GPS
                           </button>
-                        )}
+                          <button
+                            onClick={() => setLocChoice(null)}
+                            className="rounded-full border border-white/15 px-3 py-1 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-white/50 hover:border-white/30 hover:text-white/70 transition-colors"
+                            title="Reopen the location explainer"
+                          >
+                            Why Ask?
+                          </button>
+                        </div>
+                      )}
                       </div>
                       {!geo.loading && (
                         <p className="mt-2 text-[11px] text-white/35">
