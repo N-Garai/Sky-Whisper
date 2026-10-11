@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ping } from '../lib/chimes';
+import { matchIntent } from '../lib/voiceIntent';
 
 interface PointerTarget {
   name: string;
@@ -12,6 +13,10 @@ interface BlackoutPointerProps {
   lat: number;
   lon: number;
   onClose: () => void;
+  /** Pause/play reach the narration player underneath without leaving the dark. */
+  onTransport: (action: 'play' | 'pause') => void;
+  /** Replay exits the dark first — the countdown must stay visible. */
+  onReplay: () => void;
 }
 
 function wrapDeg(deg: number): number {
@@ -34,7 +39,7 @@ function signedDiff(targetAz: number, heading: number): number {
  * Nothing here emits meaningful light: all chrome is deep red on black,
  * kept tiny and dim. Keep this view open; the compass dies with it.
  */
-export function BlackoutPointer({ snapshot, lat, lon, onClose }: BlackoutPointerProps) {
+export function BlackoutPointer({ snapshot, lat, lon, onClose, onTransport, onReplay }: BlackoutPointerProps) {
   const [targets, setTargets] = useState<PointerTarget[]>([]);
   const [targetName, setTargetName] = useState<string | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
@@ -46,6 +51,139 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose }: BlackoutPointer
   // One-shot voice question inside pointer mode.
   const [micState, setMicState] = useState<'idle' | 'listening' | 'thinking' | 'error'>('idle');
   const [spoken, setSpoken] = useState<string | null>(null);
+  // Conversation memory, same as the main panel: follow-ups land in context.
+  const lastExchange = useRef<{ q: string; a: string } | null>(null);
+
+  /**
+   * Full intent routing, mirroring the main voice panel: transport controls
+   * act on the player underneath, replay exits the dark first (its countdown
+   * must stay visible), questions go to the agent with memory, and anything
+   * else gets an honest hint instead of silence.
+   */
+  const listenOnce = () => new Promise<string>((resolve, reject) => {
+    const w = window as any;
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+    if (!Ctor) {
+      reject(new Error('unsupported'));
+      return;
+    }
+    try {
+      const rec = new Ctor();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      const kill = window.setTimeout(() => {
+        try { rec.stop(); } catch { /* already stopped */ }
+        reject(new Error('timeout'));
+      }, 15000);
+      rec.onresult = (e: any) => {
+        window.clearTimeout(kill);
+        resolve(String(e.results?.[0]?.[0]?.transcript ?? ''));
+      };
+      rec.onerror = (e: any) => {
+        window.clearTimeout(kill);
+        reject(new Error(String(e?.error ?? 'recognition')));
+      };
+      rec.onend = () => {
+        window.clearTimeout(kill);
+        reject(new Error('no-speech'));
+      };
+      rec.start();
+    } catch {
+      reject(new Error('unavailable'));
+    }
+  });
+
+  const speak = (text: string) => {
+    try {
+      window.speechSynthesis?.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1;
+      window.speechSynthesis?.speak(u);
+    } catch {
+      // speech unavailable — transcript stays on screen
+    }
+  };
+
+  const askAgent = async (query: string) => {
+    setMicState('thinking');
+    try {
+      const res = await fetch('/api/voice/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude: lat, longitude: lon,
+          timestamp: new Date().toISOString(),
+          transcript: query,
+          history: lastExchange.current ? [lastExchange.current] : [],
+        }),
+      });
+      if (!res.ok) throw new Error(`server ${res.status}`);
+      const data = await res.json();
+      const reply = typeof data.reply === 'string' ? data.reply : '';
+      if (!reply) throw new Error('empty');
+      lastExchange.current = { q: query, a: reply.slice(0, 600) };
+      setSpoken(reply.length > 220 ? reply.slice(0, 220) + '…' : reply);
+      setMicState('idle');
+      if (typeof data.audioPath === 'string' && data.audioPath) {
+        await new Audio(data.audioPath).play().catch(() => speak(reply));
+      } else {
+        speak(reply);
+      }
+    } catch {
+      setMicState('error');
+    }
+  };
+
+  const askByVoice = async () => {
+    setMicState('listening');
+    setSpoken(null);
+    let transcript = '';
+    try {
+      transcript = await listenOnce();
+    } catch {
+      setMicState('error');
+      return;
+    }
+    if (!transcript.trim()) {
+      setMicState('error');
+      return;
+    }
+    const intent = matchIntent(transcript);
+    switch (intent.type) {
+      case 'pause':
+        onTransport('pause');
+        setSpoken('Paused.');
+        setMicState('idle');
+        return;
+      case 'play':
+        onTransport('play');
+        setSpoken('Playing.');
+        setMicState('idle');
+        return;
+      case 'replay':
+        onClose();
+        onReplay();
+        return;
+      case 'volume':
+        setSpoken('Volume lives on your earbud buttons out here.');
+        setMicState('idle');
+        return;
+      case 'wake':
+        setSpoken('I’m listening — ask about the sky.');
+        speak('I’m listening. Ask about the sky.');
+        setMicState('idle');
+        return;
+      case 'describe':
+      case 'ask':
+        await askAgent(intent.type === 'describe' ? transcript.trim() : intent.query);
+        return;
+      case 'none':
+      default:
+        setSpoken('Didn’t catch that — try “where can I find Vega?” or tap a target.');
+        setMicState('idle');
+    }
+  };
 
   // Targets: visible planets, bright stars, Moon when up.
   useEffect(() => {
@@ -143,92 +281,6 @@ export function BlackoutPointer({ snapshot, lat, lon, onClose }: BlackoutPointer
   const target = targets.find((t) => t.name === targetName) ?? null;
   const diff = target && heading !== null ? signedDiff(target.azimuth, heading) : null;
   const aligned = diff !== null && Math.abs(diff) < 8;
-
-  /**
-   * One-shot voice question: listen once (same browser engine as the main
-   * voice panel), send to /api/voice/answer, then speak the reply — device
-   * TTS audio when the server rendered it, speech synthesis otherwise.
-   * The dim transcript stays readable without lighting the field.
-   */
-  const askByVoice = async () => {
-    const w = window as any;
-    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-    if (!Ctor) {
-      setMicState('error');
-      return;
-    }
-    setMicState('listening');
-    setSpoken(null);
-    let transcript = '';
-    try {
-      transcript = await new Promise<string>((resolve, reject) => {
-        const rec = new Ctor();
-        rec.lang = 'en-US';
-        rec.interimResults = false;
-        rec.maxAlternatives = 1;
-        const kill = window.setTimeout(() => {
-          try { rec.stop(); } catch { /* already stopped */ }
-          reject(new Error('timeout'));
-        }, 15000);
-        rec.onresult = (e: any) => {
-          window.clearTimeout(kill);
-          resolve(String(e.results?.[0]?.[0]?.transcript ?? ''));
-        };
-        rec.onerror = (e: any) => {
-          window.clearTimeout(kill);
-          reject(new Error(String(e?.error ?? 'recognition')));
-        };
-        rec.onend = () => {
-          window.clearTimeout(kill);
-          reject(new Error('no-speech'));
-        };
-        rec.start();
-      });
-    } catch {
-      setMicState('error');
-      return;
-    }
-    if (!transcript.trim()) {
-      setMicState('error');
-      return;
-    }
-    setMicState('thinking');
-    try {
-      const res = await fetch('/api/voice/answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latitude: lat, longitude: lon,
-          timestamp: new Date().toISOString(),
-          transcript,
-        }),
-      });
-      if (!res.ok) throw new Error(`server ${res.status}`);
-      const data = await res.json();
-      const reply = typeof data.reply === 'string' ? data.reply : '';
-      if (!reply) throw new Error('empty');
-      setSpoken(reply.length > 220 ? reply.slice(0, 220) + '…' : reply);
-      setMicState('idle');
-      if (typeof data.audioPath === 'string' && data.audioPath) {
-        await new Audio(data.audioPath).play().catch(() => speak(reply));
-      } else {
-        speak(reply);
-      }
-    } catch {
-      setMicState('error');
-    }
-  };
-
-  const speak = (text: string) => {
-    try {
-      window.speechSynthesis?.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1;
-      window.speechSynthesis?.speak(u);
-    } catch {
-      // speech unavailable — transcript stays on screen
-    }
-  };
 
   // Fresh heading for the interval: effects below re-run rarely, the ref never lies.
   const headingRef = useRef<number | null>(null);

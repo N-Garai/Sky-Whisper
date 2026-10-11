@@ -395,6 +395,11 @@ export default function App() {
           lat={geo.lat ?? 22.57}
           lon={geo.lon ?? 88.36}
           onClose={() => setPointerOpen(false)}
+          onTransport={voiceTransport}
+          onReplay={() => {
+            setPointerOpen(false);
+            voiceReplay();
+          }}
         />
       </div>
     </div>

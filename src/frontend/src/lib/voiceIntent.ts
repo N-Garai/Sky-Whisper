@@ -59,6 +59,13 @@ const COMMANDS: Array<{ intent: Exclude<VoiceIntent['type'], 'ask' | 'none' | 'v
   { intent: 'wake', phrases: WAKE_WORDS },
 ];
 
+/** Openers that mark free speech as a question, even with no wake word. */
+const QUESTION_OPENERS = [
+  'what', 'whats', "what's", 'where', "where's", 'when', 'which', 'how',
+  'who', 'tell me', 'describe', 'is there', 'are there', 'can you',
+  'could you', 'will there', 'do you',
+];
+
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[?!.,;:]/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -80,11 +87,13 @@ export interface MatchOptions {
 
 /**
  * Match a final transcript against the keyword list. Priority order is
- * deliberate: transport controls win over narration, narration over wake,
- * and free-form speech only becomes a question inside a command window
- * (otherwise every musing would trigger a model call).
+ * deliberate: volume, then transport controls, then narration, then wake.
+ * After that, anything shaped like a genuine question goes to the agent —
+ * no wake word required, because the mic is already explicitly on and the
+ * user is clearly addressing the sky, not musing aloud.
  */
 export function matchIntent(transcript: string, opts: MatchOptions = {}): VoiceIntent {
+  const raw = transcript.trim();
   const text = normalize(transcript);
   if (!text) return { type: 'none' };
 
@@ -104,9 +113,18 @@ export function matchIntent(transcript: string, opts: MatchOptions = {}): VoiceI
     }
   }
 
-  const substantial = text.split(' ').length >= 3;
+  const words = text.split(' ');
+  const substantial = words.length >= 3;
+  // Direct questions: ends with "?" or opens like one ("where can…").
+  // The mic being on is consent enough — no wake word demanded.
+  if (substantial) {
+    if (/\?\s*$/.test(raw)) return { type: 'ask', query: raw };
+    if (QUESTION_OPENERS.some((opener) => text === opener || text.startsWith(opener + ' '))) {
+      return { type: 'ask', query: raw };
+    }
+  }
   if (substantial && (opts.commandWindowOpen || opts.expectingQuestion)) {
-    return { type: 'ask', query: transcript.trim() };
+    return { type: 'ask', query: raw };
   }
   return { type: 'none' };
 }
