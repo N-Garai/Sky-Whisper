@@ -41,9 +41,12 @@ The model never computes coordinates; it receives the finished snapshot.
 
 Model currency: the chain defaults to served, verified IDs — currently
 Gemma 4 on the first two rungs (`gemma-4-26b-a4b-it`, then `gemma-4-31b-it`),
-`openai/gpt-oss-120b` on Groq, `meta/llama-3.1-8b-instruct` on NVIDIA NIM —
-each overridable by environment, each rung carrying a fallback ID for when
-providers retire names (which they do, without warning). `OLLAMA_MODEL`
+`openai/gpt-oss-120b` on Groq (reasoning effort pinned low, so its thinking
+trace cannot eat the token budget), `meta/llama-3.3-70b-instruct` on NVIDIA
+NIM with `meta/llama-3.1-70b-instruct` as fallback — each overridable by
+environment, each rung carrying a fallback ID for when providers retire
+names (which they do, without warning: `llama-3.1-8b-instruct` went 410 and
+`gemma-2-9b-it` 404s on the hosted endpoint). `OLLAMA_MODEL`
 defaults to `gemma4:e2b` for small machines. Verify any new ID with your own
 key first: Google documents newer IDs primarily against the native
 `:generateContent` API, and OpenAI-compat coverage is not guaranteed.

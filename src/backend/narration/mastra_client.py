@@ -58,6 +58,7 @@ async def narrate_via_mastra(
     """
     global _LAST_DETAILS
     if not is_available():
+        _LAST_DETAILS = {"harness_error": "node or compiled harness missing"}
         return None
     payload = json.dumps({
         "factsJson": json.dumps(facts),
@@ -69,18 +70,30 @@ async def narrate_via_mastra(
         "timestamp": timestamp,
     })
     env = {**os.environ, **(env_overrides or {})}
+
+    def _err(detail: str, tail: bytes = b"") -> None:
+        # Stderr is capped: a chatty child must never bloat the pack record.
+        msg = detail
+        if tail:
+            snippet = tail.decode("utf-8", errors="replace").strip().splitlines()
+            snippet = [ln for ln in snippet if ln.strip()][-3:]
+            if snippet:
+                msg += ": " + " | ".join(snippet)[-300:]
+        _LAST_DETAILS = {"harness_error": msg[:400]}
+
     try:
         proc = await asyncio.create_subprocess_exec(
             "node", str(_CLI), "narrate",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             env=env,
         )
-    except Exception:
+    except Exception as exc:
+        _err(f"spawn failed: {type(exc).__name__}")
         return None
     try:
-        out, _ = await asyncio.wait_for(proc.communicate(payload.encode("utf-8")), timeout)
+        out, err = await asyncio.wait_for(proc.communicate(payload.encode("utf-8")), timeout)
     except (asyncio.TimeoutError, TimeoutError):
         # The child would otherwise outlive us holding ~200 MB: kill it.
         # (The CLI also self-terminates at 60 s; this is the backstop.)
@@ -92,27 +105,30 @@ async def narrate_via_mastra(
             await asyncio.wait_for(proc.wait(), timeout=5)
         except Exception:
             pass
-        _LAST_DETAILS = {}
+        _err(f"harness timeout after {timeout:g}s")
         return None
-    except Exception:
+    except Exception as exc:
         try:
             proc.kill()
         except Exception:
             pass
+        _err(f"harness error: {type(exc).__name__}")
         return None
     if proc.returncode != 0:
-        _LAST_DETAILS = {}
+        _err(f"harness exit {proc.returncode}", err)
         return None
     try:
         data = json.loads(out.decode("utf-8", errors="replace"))
     except Exception:
-        _LAST_DETAILS = {}
+        _err("harness printed no JSON envelope", err)
         return None
     # Tolerant parse: current CLI prints the narration envelope
     # {text, bodies_mentioned, wordCount}; older builds print {text} only.
     text = data.get("text", "")
     if not isinstance(text, str) or len(text) < 120:
-        _LAST_DETAILS = {}
+        reported = data.get("wordCount")
+        _err(f"harness text unusable ({len(text) if isinstance(text, str) else 'non-string'} chars"
+             + (f", reported words {reported}" if isinstance(reported, (int, float)) else "") + ")", err)
         return None
     details: dict[str, Any] = {}
     bodies = data.get("bodies_mentioned")

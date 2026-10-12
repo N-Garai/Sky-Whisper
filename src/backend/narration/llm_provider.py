@@ -3,18 +3,22 @@
 Chain (first validated transcript wins; each stage is OpenAI-compatible):
   1. Gemini API, fast rung  (GEMMA3_MODEL, default gemma-4-26b-a4b-it)
   2. Gemini API, large rung (GEMMA4_MODEL, default gemma-4-31b-it)
-  3. Groq        open-weight (GROQ_MODEL, default openai/gpt-oss-120b)
-  4. NVIDIA NIM  open-weight (NVIDIA_MODEL, default meta/llama-3.1-8b-instruct)
+  3. Groq        open-weight (GROQ_MODEL, default openai/gpt-oss-120b,
+                 reasoning effort pinned low — its thinking trace otherwise
+                 eats max_tokens and replies come back empty)
+  4. NVIDIA NIM  open-weight (NVIDIA_MODEL, default meta/llama-3.3-70b-instruct,
+                 fallback meta/llama-3.1-70b-instruct)
   5. template narrator (deterministic, always available) - the caller's fallback
 
 Why these defaults (verified October 2026 against live provider errors):
-Gemini API 404s unknown IDs with "models/<id> is not found" — Gemma 3 IDs
-currently do exactly that, while gemma-4-26b-a4b-it answers and
-gemma-4-31b-it is the documented sibling. Point GEMMA3_MODEL at any ID and
-the rung follows; identical IDs are tried once via dedupe. Groq retired
-gemma2-9b-it (Oct 2025 shutdown); gpt-oss-120b is their recommended
-open-weight replacement. meta/llama-3.1-8b-instruct is NVIDIA's canonical
-NIM example; confirm yours with:
+Gemma 3 was discontinued on the Gemini API (May 2026) and 404s; Gemma 4
+IDs are served but flaky Google-side (documented 500s), so the chain must
+survive them via Groq/NIM/template. Groq retired gemma2-9b-it (Oct 2025
+shutdown); gpt-oss-120b is their recommended open-weight replacement.
+meta/llama-3.1-8b-instruct was retired on NIM cloud (410 Gone, deprecated
+2026-08-25), as was the google/gemma-2-9b-it fallback (404 on the hosted
+endpoint); the current build.nvidia.com chat IDs above replace them.
+Confirm yours with:
   curl $NVIDIA_BASE_URL/models -H "Authorization: Bearer $NVIDIA_API_KEY"
 
 A stage is included only when its key is set. LOCAL_INFERENCE=true or
@@ -69,7 +73,7 @@ HARD CONSTRAINTS:
 """
 
 
-def _chain() -> list[dict[str, str]]:
+def _chain() -> list[dict[str, Any]]:
     """Ordered model stages. A stage is included only when its key is set."""
     if os.getenv("LOCAL_INFERENCE", "").lower() == "true" or \
        (os.getenv("LLM_PROVIDER") or "").strip().lower() == "ollama":
@@ -96,20 +100,26 @@ def _chain() -> list[dict[str, str]]:
     if groq_key:
         # gemma2-9b-it was retired by Groq (2025-10 shutdown); gpt-oss-120b
         # is Groq's recommended open-weight replacement (131K context).
+        # gpt-oss is a reasoning model: without effort control its thinking
+        # trace eats max_tokens and replies come back empty — "low" keeps
+        # the answer inside budget (field evidence, Oct 2026).
         stages.append({"name": "groq", "label": "Groq",
                        "base_url": os.getenv("GROQ_BASE_URL", GROQ_BASE),
                        "fallback_model": "openai/gpt-oss-20b",
+                       "extra_body": {"reasoning_effort": "low"},
                        "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "api_key": groq_key})
     nvidia_key = os.getenv("NVIDIA_API_KEY", "").strip()
     if nvidia_key:
-        # meta/llama-3.1-8b-instruct is NVIDIA's canonical NIM example, but
-        # NIM cloud retires IDs without warning (410 Gone observed in the
-        # field) — confirm yours against /v1/models, override with
-        # NVIDIA_MODEL, and the rung falls back to google/gemma-2-9b-it.
+        # meta/llama-3.1-8b-instruct was retired on NIM cloud (410 Gone,
+        # deprecated 2026-08-25) and so was the google/gemma-2-9b-it
+        # fallback (404 on the hosted endpoint) — both observed live.
+        # Current build.nvidia.com chat IDs (Oct 2026): llama-3.3-70b
+        # primary, llama-3.1-70b fallback. Confirm yours against /v1/models
+        # and override with NVIDIA_MODEL.
         stages.append({"name": "nvidia-nim", "label": "NVIDIA NIM",
                        "base_url": os.getenv("NVIDIA_BASE_URL", NVIDIA_BASE),
-                       "fallback_model": "google/gemma-2-9b-it",
-                       "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct"), "api_key": nvidia_key})
+                       "fallback_model": "meta/llama-3.1-70b-instruct",
+                       "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct"), "api_key": nvidia_key})
     return stages
 
 
@@ -118,7 +128,7 @@ def chain_signature() -> str:
     return "|".join(f"{c['name']}:{c['model']}" for c in _chain()) or "template"
 
 
-def _provider_config() -> dict[str, str]:
+def _provider_config() -> dict[str, Any]:
     """The first active stage, or a template marker."""
     stages = _chain()
     return stages[0] if stages else {"name": "template", "label": "Template",
@@ -193,7 +203,7 @@ def _user_prompt(snap: SkySnapshot, duration_seconds: int,
     )
 
 
-async def _chat(cfg: dict[str, str], system: str, user: str,
+async def _chat(cfg: dict[str, Any], system: str, user: str,
                 errors: list[str]) -> str | None:
     """One OpenAI-compatible chat completion. Returns None on any failure.
 
@@ -218,6 +228,11 @@ async def _chat(cfg: dict[str, str], system: str, user: str,
         "max_tokens": 900,
         "stream": False,
     }
+    # Per-stage provider knobs (e.g. Groq reasoning effort). Passed through
+    # verbatim to OpenAI-compatible endpoints that honor them.
+    extra = cfg.get("extra_body")
+    if isinstance(extra, dict):
+        body.update(extra)
     timeout = aiohttp.ClientTimeout(total=45)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -249,7 +264,7 @@ def _model_missing(errors: list[str]) -> bool:
 
 
 async def _stage_text(
-    cfg: dict[str, str], snap: SkySnapshot, duration_seconds: int, facts: dict,
+    cfg: dict[str, Any], snap: SkySnapshot, duration_seconds: int, facts: dict,
     errors: list[str], extra_context: str | None = None,
     rung_over: Any = None, tried: set[str] | None = None,
 ) -> tuple[str | None, str]:
@@ -465,8 +480,10 @@ async def narrate_with_model(
             )
             if text is not None and _mastra_ok(text):
                 return _with_details(_result(snap, text, facts, budget, cfg, "mastra", attempts))
+            merr = last_details().get("harness_error")
             attempts.append({"stage": cfg["name"] + " (mastra)", "status": "rejected",
-                             "reason": "no usable text or failed gates"})
+                             "reason": "no usable text or failed gates"
+                             + (f" ({merr})" if merr else "")})
 
         # Path 2 — direct provider HTTP for this rung, unless this rung has
         # already consumed its share of time.

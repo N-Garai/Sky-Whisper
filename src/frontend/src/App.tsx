@@ -93,7 +93,23 @@ export default function App() {
     setStage(PREPARE_STAGES[0]);
     let streamed = false;
     try {
-      const pack = await streamPack(params, (label) => setStage(label));
+      const pack = await streamPack(params, (label) => {
+        setStage(label);
+        // The stream reports server stages but the ritual shows all five
+        // steps, so bridge the gap: once the snapshot lands, advance once
+        // to 'Tracing Constellations' while narration runs — the same
+        // progression the POST fallback below shows, whichever path wins.
+        if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
+        if (label === PREPARE_STAGES[0]) {
+          stageTimer.current = window.setTimeout(() => {
+            setStage((s) => (s === PREPARE_STAGES[0] ? PREPARE_STAGES[1] : s));
+          }, 2500);
+        } else {
+          stageTimer.current = null;
+        }
+      });
+      if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
+      stageTimer.current = null;
       finish(pack);
       streamed = true;
     } catch {
@@ -105,6 +121,7 @@ export default function App() {
 
     let step = 0;
     setStage(PREPARE_STAGES[0]);
+    if (stageTimer.current !== null) window.clearInterval(stageTimer.current);
     stageTimer.current = window.setInterval(() => {
       step = Math.min(step + 1, PREPARE_STAGES.length - 2);
       setStage(PREPARE_STAGES[step]);

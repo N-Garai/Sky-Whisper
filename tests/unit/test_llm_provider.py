@@ -243,7 +243,51 @@ def test_chain_defaults_are_live_ids(clean_env):
     clean_env.setenv("NVIDIA_API_KEY", "n")
     models = {c["name"]: c["model"] for c in llm_provider._chain()}
     assert models["groq"] == "openai/gpt-oss-120b"
-    assert models["nvidia-nim"] == "meta/llama-3.1-8b-instruct"
+    assert models["nvidia-nim"] == "meta/llama-3.3-70b-instruct"
+    groq_cfg = next(c for c in llm_provider._chain() if c["name"] == "groq")
+    assert groq_cfg.get("extra_body", {}).get("reasoning_effort") == "low"
+
+
+def test_chat_merges_extra_body():
+    """Per-stage provider knobs (Groq reasoning effort) reach the request."""
+    import aiohttp
+
+    seen: dict = {}
+
+    class Resp:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def json(self):
+            return {"choices": [{"message": {"content": "x" * 200}}]}
+
+    class Sess:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def post(self, url, headers=None, json=None):
+            seen.update(json or {})
+            return Resp()
+
+    with patch.object(aiohttp, "ClientSession", Sess):
+        text = asyncio.run(llm_provider._chat(
+            {"model": "m", "base_url": "https://example.test", "api_key": "",
+             "extra_body": {"reasoning_effort": "low"}},
+            "sys", "user", []))
+    assert seen.get("reasoning_effort") == "low"
+    assert seen.get("model") == "m"
+    assert text is not None and len(text) == 200
 
 
 def test_budget_echo_is_allowed_not_hallucination(snapshot, clean_env):
