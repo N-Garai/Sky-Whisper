@@ -113,7 +113,13 @@ def validate_narration(text: str, facts: dict[str, float]) -> tuple[bool, list[s
             continue
         problems.append(f"unapproved number: {n}")
     # Reject raw coordinate phrasing — narration speaks fist-widths, not degrees.
+    # Digits or spelled-out numbers ("fifty-four degrees up" dodges the digit
+    # form) followed by a height word are all the same violation.
     if re.search(r"\d+\s*°|\d+\s*degrees?\s+(above|below)", text, flags=re.IGNORECASE):
+        problems.append("raw coordinate phrasing — use fist-widths instead")
+    number_words = "|".join(sorted(set(_WORD_NUMBERS), key=len, reverse=True))
+    if re.search(rf"(?:\b(?:{number_words})\b(?:[\s-]+\w+){{0,2}}\s+degrees?\s+(?:above|below|up|high)\b)",
+                 text, flags=re.IGNORECASE):
         problems.append("raw coordinate phrasing — use fist-widths instead")
     supported = set()
     for key, value in facts.items():
@@ -239,3 +245,142 @@ def build_script(snap: SkySnapshot, duration_seconds: int = 90) -> dict[str, Any
         "fallback_used": True,
         "facts": facts,
     }
+
+
+# Curated identification notes, one or two per body. Template-grade trust:
+# reviewed once, served deterministically. Deliberately free of numbers
+# and compass words so they always pass the same gates model prose does.
+BODY_NOTES: dict[str, tuple[str, ...]] = {
+    "Mercury": (
+        "a small world of extremes, scorched in daylight and frozen through the night",
+        "a steady spark low near the sun's glow that never twinkles the way stars do",
+    ),
+    "Venus": (
+        "wrapped in bright cloud, the most brilliant point in the sky after the sun and moon",
+        "steady and unblinking, outshining every true star around it",
+    ),
+    "Mars": (
+        "a calm ember among the stars, distinctly red to a steady gaze",
+        "binoculars steady it into a tiny red disc",
+    ),
+    "Jupiter": (
+        "the giant of the night sky, outshining every star in view",
+        "small binoculars show its bright moons strung in a row beside it",
+    ),
+    "Saturn": (
+        "a pale gold point to the unaided eye, calm and steady",
+        "any small telescope resolves its rings, tilted for a fine view",
+    ),
+    "Moon": (
+        "its dark patches are ancient lava plains, visible without any aid",
+        "binoculars turn the bright edge into mountains and craters",
+    ),
+    "Sun": (
+        "never look straight at it without certified solar filters",
+        "its glare is what washes the fainter stars from view",
+    ),
+    "star": (
+        "a sun like ours, seen across an enormous distance",
+        "steady your gaze and its light settles against the dark",
+    ),
+}
+
+_STAR_NAMES = (
+    "sirius", "canopus", "arcturus", "vega", "capella", "rigel",
+    "procyon", "betelgeuse", "altair", "aldebaran", "antares", "spica",
+    "pollux", "fomalhaut", "deneb", "regulus", "castor", "polaris",
+)
+
+
+def detect_body(transcript: str) -> str | None:
+    """Name the body a follow-up question is about, if any.
+
+    Earliest mention wins ("Jupiter and Saturn" is about Jupiter).
+    Returns the display name (planets, Moon, Sun, bright stars) or None
+    for whole-sky questions.
+    """
+    lowered = transcript.lower()
+    candidates: list[tuple[int, str]] = []
+    for name in ("mercury", "venus", "mars", "jupiter", "saturn", "moon", "sun"):
+        for match in re.finditer(rf"\b{name}\b", lowered):
+            candidates.append((match.start(), name.capitalize()))
+    for star in _STAR_NAMES:
+        for match in re.finditer(rf"\b{star}\b", lowered):
+            candidates.append((match.start(), star.capitalize()))
+    if not candidates:
+        return None
+    candidates.sort()
+    return candidates[0][1]
+
+
+def _body_position(snap: SkySnapshot, body: str) -> tuple[float, float] | None:
+    """(altitude, azimuth) of a detected body in this snapshot, if present."""
+    if body == "Moon":
+        return (snap.moon.altitude_deg, snap.moon.azimuth_deg)
+    if body == "Sun":
+        return (snap.sun.altitude_deg, snap.sun.azimuth_deg)
+    lowered = body.lower()
+    for p in snap.planets:
+        if p.name.lower() == lowered:
+            return (p.altitude_deg, p.azimuth_deg)
+    for s in snap.stars:
+        if s.name.lower() == lowered:
+            return (s.altitude_deg, s.azimuth_deg)
+    return None
+
+
+def _body_magnitude(snap: SkySnapshot, body: str) -> float | None:
+    for s in snap.stars:
+        if s.name.lower() == body.lower():
+            return s.magnitude
+    return None
+
+
+def build_focused_answer(snap: SkySnapshot, body: str) -> dict[str, Any] | None:
+    """Deterministic 3-sentence answer about one body: where to look, how
+    to identify it, one curated note. The model path's fallback when a
+    follow-up names a body — always about what was asked, never the
+    whole sky, and short enough to speak in seconds."""
+    pos = _body_position(snap, body)
+    if pos is None:
+        return None
+    alt, az = pos
+    notes = BODY_NOTES.get(body, BODY_NOTES["star"])
+    day = 0
+    try:
+        day = int(snap.timestamp[8:10])
+    except (ValueError, IndexError, TypeError):
+        pass
+    note = notes[day % len(notes)]
+    sentences: list[str] = []
+    if alt < 0:
+        sentences.append(f"{body} is below your horizon right now, out of sight.")
+        sentences.append(note.capitalize() + ".")
+        other = notes[(day + 1) % len(notes)]
+        if other != note:
+            sentences.append(other.capitalize() + ".")
+    elif body == "Moon":
+        phase = snap.moon.phase_name.replace("_", " ")
+        pct = round(snap.moon.illumination * 100)
+        sentences.append(f"the moon is a {phase}, {pct} percent lit, {altaz_to_phrase(alt, az)}.")
+        sentences.append("look for the thin bright curve, unmistakable even through city glow.")
+        sentences.append(note.capitalize() + ".")
+    elif body == "Sun":
+        sentences.append("the sun is still up, so only the brightest things will show.")
+        sentences.append(note.capitalize() + ".")
+        sentences.append(notes[(day + 1) % len(notes)].capitalize() + ".")
+    else:
+        sentences.append(f"{body} is waiting for you {altaz_to_phrase(alt, az)}.")
+        mag = _body_magnitude(snap, body)
+        if mag is not None:
+            if mag < 0.5:
+                sentences.append(f"{body} is among the very brightest points up tonight.")
+            elif mag < 1.5:
+                sentences.append(f"{body} is brighter than most stars near it.")
+            else:
+                sentences.append("it is a modest star, easier with binoculars steady on it.")
+        else:
+            sentences.append("a steady point that does not twinkle the way stars do.")
+        sentences.append(note.capitalize() + ".")
+    script = " ".join(sentences)
+    return {"script": script, "word_count": len(script.split())}

@@ -222,6 +222,31 @@ class TestVoiceEndpoint:
         assert body["provider"] == "template"
         assert len(body["reply"]) > 100
 
+    def test_rambling_model_answer_falls_back_focused(self, client):
+        """A valid-but-rambling follow-up is replaced by the short focused
+        template answer about the asked body — never the whole sky."""
+        from unittest.mock import patch
+
+        from src.backend.narration import llm_provider
+
+        async def fake_ramble(*args, **kwargs):
+            return {"script": " ".join(["sky"] * 200),
+                    "word_count": 200, "word_budget": 72, "claims": [], "warnings": [],
+                    "fallback_used": False, "model": "m", "provider": "test",
+                    "orchestrator": "direct", "facts": {}}
+
+        with patch.object(llm_provider, "narrate_with_model", side_effect=fake_ramble):
+            r = client.post("/api/voice/answer", json={
+                "latitude": 22.5726, "longitude": 88.3639,
+                "timestamp": "2026-10-07T18:00:00Z",
+                "transcript": "tell me more about Mercury",
+            })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["provider"] == "template"
+        assert "Mercury" in body["reply"]
+        assert len(body["reply"].split()) <= 90
+
 
 class TestPackStream:
     @pytest.fixture(autouse=True)

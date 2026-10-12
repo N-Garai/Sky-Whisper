@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import { WAKE_WORDS } from '../lib/voiceIntent';
 import { workingChime, doneChime, errorChime, ensureAudio } from '../lib/chimes';
+import { setPlaybackActive, subscribePlayback } from '../lib/audioBus';
 
 interface VoiceBarProps {
   onDescribe: () => void;
@@ -171,6 +172,48 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
     }
   }, [replyAudio]);
 
+  // The reply element reports to the playback bus like the pack player.
+  useEffect(() => {
+    const el = replyAudioRef.current;
+    if (!el) return;
+    const onPlay = () => setPlaybackActive('reply', true);
+    const onStop = () => setPlaybackActive('reply', false);
+    el.addEventListener('play', onPlay);
+    el.addEventListener('pause', onStop);
+    el.addEventListener('ended', onStop);
+    return () => {
+      el.removeEventListener('play', onPlay);
+      el.removeEventListener('pause', onStop);
+      el.removeEventListener('ended', onStop);
+      setPlaybackActive('reply', false);
+    };
+  }, []);
+
+  // Duck the mic while any voice plays: recognition hears the speaker and
+  // answers itself otherwise. Resume afterwards only if it was listening —
+  // a manual Stop stays stopped.
+  const agentRef = useRef(agent);
+  agentRef.current = agent;
+  const resumeListening = useRef(false);
+  const manualStop = () => {
+    resumeListening.current = false;
+    agent.stop();
+  };
+  useEffect(
+    () =>
+      subscribePlayback((active) => {
+        const a = agentRef.current;
+        if (active) {
+          resumeListening.current = a.listening;
+          if (a.listening) a.stop();
+        } else if (resumeListening.current) {
+          resumeListening.current = false;
+          if (a.supported) a.start();
+        }
+      }),
+    [],
+  );
+
   return (
     <div className="fixed bottom-20 right-4 sm:right-6 z-40 flex flex-col items-end gap-3">
       <audio ref={replyAudioRef} src={replyAudio ?? undefined} preload="auto" className="hidden" />
@@ -258,7 +301,7 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={agent.stop}
+                    onClick={manualStop}
                     className="flex-1 py-2 rounded-lg border border-white/15 text-white/60 text-xs hover:border-white/30"
                   >
                     Stop
@@ -283,7 +326,7 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
       <motion.button
         onClick={() => {
           if (!open) setOpen(true);
-          else if (agent.listening) agent.stop();
+          else if (agent.listening) manualStop();
           else setOpen(false);
           if (!open && agent.supported && !agent.listening) agent.start();
         }}

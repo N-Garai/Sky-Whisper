@@ -16,7 +16,13 @@ from fastapi.staticfiles import StaticFiles
 
 from src.backend.audio.tts import synthesize
 from src.backend.core.astronomy import EPHEMERIS_FILE, build_snapshot, parse_timestamp
-from src.backend.narration.template_narrator import build_script, cache_key
+from src.backend.narration.template_narrator import (
+    BODY_NOTES,
+    build_focused_answer,
+    build_script,
+    cache_key,
+    detect_body,
+)
 from src.backend.services.satellites import compute_passes
 from src.backend.services.weather import get_cloud_cover
 from src.shared.schemas import PackRequest
@@ -364,12 +370,28 @@ async def voice_answer(body: dict) -> JSONResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"ephemeris error: {exc}")
 
-    question = (
-        "The listener just asked, in their own words: "
-        f"{transcript.strip()} "
-        "Answer that question directly from tonight's computed facts, briefly, "
-        "in calm spoken prose for text-to-speech. No markdown, no bullets."
-    )
+    target = detect_body(transcript)
+    if target is not None:
+        # A follow-up naming a body is about THAT body: where to look, how
+        # to identify it, one approved note — never the whole sky again.
+        notes = BODY_NOTES.get(target, BODY_NOTES["star"])
+        question = (
+            f"The listener asked about {target} — answer ONLY about {target}. "
+            f"{transcript.strip()} "
+            "Say where to look and how to identify it from tonight's computed "
+            "facts, then close with exactly one of these approved notes: "
+            f"{' / '.join(notes)}. "
+            "Three to four short sentences, under 60 words. No markdown, "
+            "no bullets, no other bodies, no weather."
+        )
+    else:
+        question = (
+            "The listener just asked, in their own words: "
+            f"{transcript.strip()} "
+            "Answer that question directly from tonight's computed facts, briefly, "
+            "in calm spoken prose for text-to-speech. No markdown, no bullets. "
+            "Answer in at most 90 words."
+        )
     history = body.get("history", [])
     if isinstance(history, list) and history:
         prior: list[str] = []
@@ -392,12 +414,20 @@ async def voice_answer(body: dict) -> JSONResponse:
         # Chain ate the whole voice budget (stacked provider timeouts).
         # Fall through to the template — a fast honest answer beats none.
         result = None
+    if result is not None and len(result["script"].split()) > 90:
+        # Valid but rambling: a follow-up answer must stay short enough to
+        # speak in seconds. Deterministic fallback below instead.
+        result = None
     if result is not None:
         text, provider, model = result["script"], result["provider"], result["model"]
         generation = result.get("generation")
     else:
-        fallback = build_script(snap, 30)
-        text, provider, model = fallback["script"], "template", "template"
+        focused = build_focused_answer(snap, target) if target is not None else None
+        if focused is not None:
+            text, provider, model = focused["script"], "template", "template"
+        else:
+            fallback = build_script(snap, 30)
+            text, provider, model = fallback["script"], "template", "template"
         generation = template_generation()
 
     audio_path: str | None = None

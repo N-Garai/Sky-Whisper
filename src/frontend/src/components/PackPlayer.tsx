@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useOfflinePack } from '../hooks/useOfflinePack';
+import { setPlaybackActive } from '../lib/audioBus';
 
 interface GenerationInfo {
   status: 'model' | 'template';
@@ -74,6 +75,13 @@ export function PackPlayer({ audioUrl, transcriptUrl, script, packId, audioAvail
     if (packId) offline.download(packId, audioUrl, transcriptUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packId]);
+
+  // Tell the mic when narration plays: recognition must duck while the
+  // speaker talks, or it hears itself and answers its own voice.
+  useEffect(() => {
+    setPlaybackActive('pack', playing);
+    return () => setPlaybackActive('pack', false);
+  }, [playing]);
 
   // Drive the progress ring from the audio element.
   useEffect(() => {

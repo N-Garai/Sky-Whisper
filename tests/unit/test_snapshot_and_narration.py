@@ -5,8 +5,11 @@ import pytest
 
 from src.backend.core.astronomy import build_snapshot
 from src.backend.narration.template_narrator import (
+    BODY_NOTES,
+    build_focused_answer,
     build_script,
     cache_key,
+    detect_body,
     extract_numbers,
     snapshot_facts,
     validate_narration,
@@ -157,6 +160,61 @@ class TestValidation:
     def test_compass_skipped_without_azimuths(self):
         ok, _ = validate_narration("look to the southeast.", {})
         assert ok
+
+
+class TestFocusedAnswers:
+    def test_detect_body_names_target(self):
+        assert detect_body("tell me more about Mercury") == "Mercury"
+        assert detect_body("Spica?") == "Spica"
+        assert detect_body("where is the sun right now") == "Sun"
+        assert detect_body("Jupiter and Saturn tonight") == "Jupiter"
+        assert detect_body("describe the sky") is None
+        assert detect_body("what is that bright one") is None
+
+    def test_focused_answer_is_short_and_valid(self, kolkata_snapshot):
+        facts = snapshot_facts(kolkata_snapshot)
+        for body in ("Mercury", "Moon", "Spica"):
+            ans = build_focused_answer(kolkata_snapshot, body)
+            assert ans is not None
+            assert body.lower() in ans["script"].lower()
+            assert ans["word_count"] <= 90
+            ok, problems = validate_narration(ans["script"], facts)
+            assert ok, problems
+
+    @pytest.mark.parametrize("body", [
+        "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Moon", "Sun",
+        "Sirius", "Canopus", "Arcturus", "Vega", "Capella", "Rigel",
+        "Procyon", "Betelgeuse", "Altair", "Aldebaran", "Antares", "Spica",
+        "Pollux", "Fomalhaut", "Deneb", "Regulus", "Castor", "Polaris",
+    ])
+    def test_every_supported_body_gets_a_valid_answer(self, kolkata_snapshot, body):
+        """The focused path must work for every planet, the Moon, the Sun,
+        and every catalog star — detected, short, and gate-clean."""
+        assert detect_body(f"tell me more about {body}") == body
+        facts = snapshot_facts(kolkata_snapshot)
+        ans = build_focused_answer(kolkata_snapshot, body)
+        assert ans is not None
+        assert body.lower() in ans["script"].lower()
+        assert ans["word_count"] <= 90
+        ok, problems = validate_narration(ans["script"], facts)
+        assert ok, problems
+
+    def test_focused_answer_below_horizon(self, kolkata_snapshot):
+        downs = [p.name for p in kolkata_snapshot.planets if p.altitude_deg < 0]
+        downs += [s.name for s in kolkata_snapshot.stars if s.altitude_deg < 0]
+        assert downs, "fixture needs a below-horizon body"
+        ans = build_focused_answer(kolkata_snapshot, downs[0])
+        assert ans is not None
+        assert "below your horizon" in ans["script"]
+        ok, problems = validate_narration(ans["script"], snapshot_facts(kolkata_snapshot))
+        assert ok, problems
+
+    def test_bank_notes_are_gate_clean(self, kolkata_snapshot):
+        facts = snapshot_facts(kolkata_snapshot)
+        for notes in BODY_NOTES.values():
+            for note in notes:
+                ok, problems = validate_narration(note, facts)
+                assert ok, problems
 
 
 class TestNarration:

@@ -183,6 +183,12 @@ with the question honored first under a 55-second hard cap (then the
 template answers), and renders TTS when configured. Satellites and weather
 are skipped on purpose — voice answers must stay fast.
 
+When the transcript names a body (planet, Moon, Sun, bright star), the
+answer is about that body only — position, identification, one curated
+note, 3–4 sentences — backed by a deterministic focused-template fallback.
+A valid-but-rambling model answer is replaced by that fallback past
+90 words, so follow-ups stay speakable in seconds.
+
 **Request**
 
 ```json
