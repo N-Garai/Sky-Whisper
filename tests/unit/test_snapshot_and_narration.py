@@ -133,6 +133,31 @@ class TestValidation:
         ok, _ = validate_narration(f"it is {fact_value} up there", facts)
         assert ok
 
+    @pytest.mark.parametrize("spelling", ["southeast", "south-east", "south east"])
+    def test_wrong_intercardinal_is_rejected(self, spelling):
+        # Production failure, pinned: a south-west moon narrated as
+        # "south-east" — every number innocent, direction 90 degrees off.
+        facts = {"moon.azimuth_deg": 225, "moon.fists": 4}
+        ok, problems = validate_narration(f"find the moon in the {spelling}.", facts)
+        assert not ok
+        assert any("south-east" in p for p in problems)
+
+    def test_matching_intercardinal_passes(self):
+        facts = {"moon.azimuth_deg": 225, "moon.fists": 4}
+        ok, problems = validate_narration("the moon hangs 4 fists above the south-west.", facts)
+        assert ok, problems
+
+    def test_bare_cardinal_needs_a_component(self):
+        facts = {"moon.azimuth_deg": 225}
+        ok, _ = validate_narration("look to the southern sky.", facts)
+        assert ok
+        ok, problems = validate_narration("look to the northern sky.", facts)
+        assert not ok and any("northern" in p for p in problems)
+
+    def test_compass_skipped_without_azimuths(self):
+        ok, _ = validate_narration("look to the southeast.", {})
+        assert ok
+
 
 class TestNarration:
     def test_word_budget(self):

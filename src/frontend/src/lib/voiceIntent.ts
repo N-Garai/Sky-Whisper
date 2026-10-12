@@ -75,8 +75,13 @@ const QUESTION_OPENERS = [
 const BODY_WORDS = [
   'sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn',
   'uranus', 'neptune', 'star', 'stars', 'planet', 'planets',
-  'constellation', 'orion', 'sirius', 'vega', 'polaris', 'iss',
-  'satellite', 'satellites', 'milky way', 'comet', 'meteor', 'meteors',
+  'constellation', 'iss',
+  'sirius', 'canopus', 'arcturus', 'vega', 'capella', 'rigel',
+  'procyon', 'betelgeuse', 'altair', 'aldebaran', 'antares', 'spica',
+  'pollux', 'deneb', 'regulus', 'castor', 'polaris',
+  'orion', 'lyra', 'cygnus', 'scorpius', 'cassiopeia', 'canis major',
+  'ursa major', 'ursa minor', 'milky way',
+  'satellite', 'satellites', 'comet', 'meteor', 'meteors',
 ];
 
 function normalize(text: string): string {
@@ -129,6 +134,13 @@ export function matchIntent(transcript: string, opts: MatchOptions = {}): VoiceI
 
   const words = text.split(' ');
   const substantial = words.length >= 3;
+  // A lone body name ("Spica.", "Saturn?") is a question about that body,
+  // not a musing — route it to the agent instead of shrugging.
+  if (BODY_WORDS.some((b) => includesPhrase(text, b))) {
+    if (words.length === 1 || text.endsWith('?') || substantial) {
+      return { type: 'ask', query: raw };
+    }
+  }
   // Fuzzy describe: sky/tonight talk with no named body in it ("what's
   // tonight sky", "how's the sky tonight") is a narration request, even
   // though it matches no preset phrase. Runs before question routing so

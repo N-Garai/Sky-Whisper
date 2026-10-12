@@ -48,13 +48,16 @@ from src.shared.sky_snapshot import SkySnapshot
 
 # Hard ceiling for the whole model walk (all rungs, both paths). Past this
 # the template answers — a slow narration must never become no narration.
-NARRATION_BUDGET_S = 150.0
+# Sized under the hosting proxy's request window: a pack that outlives it
+# is killed mid-stream and the user sees nothing for two attempts.
+NARRATION_BUDGET_S = 100.0
 
 # Ceiling per rung (Mastra attempt + direct attempt + retries). Without it,
 # one slow rung eats the whole global budget and starves the faster rungs
-# behind it — exactly the cascade in the field logs (a 45 s+ giant followed
-# by "budget exhausted" on providers that answer in seconds).
-RUNG_BUDGET_S = 55.0
+# behind it — exactly the cascade in the field logs (a giant followed
+# by "budget exhausted" on providers that answer in seconds). Tight enough
+# that the healthy rungs behind a sick one still get their turn.
+RUNG_BUDGET_S = 40.0
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 GROQ_BASE = "https://api.groq.com/openai/v1"
@@ -233,7 +236,10 @@ async def _chat(cfg: dict[str, Any], system: str, user: str,
     extra = cfg.get("extra_body")
     if isinstance(extra, dict):
         body.update(extra)
-    timeout = aiohttp.ClientTimeout(total=45)
+    # Healthy providers answer in seconds; a request that hangs has already
+    # failed for pack purposes. Short timeout keeps one sick rung from
+    # eating the rendezvous the healthy rungs behind it need.
+    timeout = aiohttp.ClientTimeout(total=20)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, headers=headers, json=body) as resp:
@@ -465,8 +471,12 @@ async def narrate_with_model(
         # pinned to the rung's endpoint via environment overrides.
         if mastra_pending:
             mastra_pending = False
+            # Capped well under the rung budget: the harness earns its place
+            # by answering fast; a slow harness must not starve the direct
+            # rungs behind it.
             text = await narrate_via_mastra(
                 facts, duration_seconds, budget,
+                timeout=40.0,
                 env_overrides={
                     "MASTRA_MODEL_ID": cfg["model"],
                     "MASTRA_BASE_URL": cfg["base_url"],

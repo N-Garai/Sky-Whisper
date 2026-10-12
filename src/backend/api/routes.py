@@ -270,9 +270,10 @@ async def stream_pack(
     """Same pipeline as POST /api/packs, streamed as server-sent events.
 
     Events: snapshot -> narration -> audio -> done (done carries the pack).
-    A cache hit emits a single done. Failures emit an error event. A
-    heartbeat comment flows during long model stages so proxies never
-    see an idle connection.
+    A cache hit emits a single done. Failures emit an error event. A named
+    heartbeat event flows every 15 s during long model stages: comments are
+    invisible to EventSource, so only a real event proves liveness to the
+    client's stall watchdog (and keeps proxies from seeing idle).
     """
     from pydantic import ValidationError
 
@@ -298,7 +299,7 @@ async def stream_pack(
                         pending = asyncio.ensure_future(gen_events.__anext__())
                     done, _ = await asyncio.wait({pending}, timeout=15.0)
                     if not done:
-                        yield b": heartbeat\n\n"
+                        yield _sse("heartbeat", {"alive": True})
                         continue
                     pending = None
                     try:

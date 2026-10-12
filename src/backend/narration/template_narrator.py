@@ -60,6 +60,7 @@ def snapshot_facts(snap: SkySnapshot) -> dict[str, float | str]:
     facts["moon.azimuth_deg"] = round(snap.moon.azimuth_deg)
     facts["moon.fists"] = _fists(snap.moon.altitude_deg)
     facts["sun.altitude_deg"] = round(snap.sun.altitude_deg)
+    facts["sun.azimuth_deg"] = round(snap.sun.azimuth_deg)
     for p in snap.planets:
         facts[f"planet.{p.name}.altitude_deg"] = round(p.altitude_deg)
         facts[f"planet.{p.name}.azimuth_deg"] = round(p.azimuth_deg)
@@ -92,7 +93,15 @@ def extract_numbers(text: str) -> list[float]:
 
 
 def validate_narration(text: str, facts: dict[str, float]) -> tuple[bool, list[str]]:
-    """Anti-hallucination check: every number must be within +/-2% of a fact.
+    """Anti-hallucination check: every number must be within +/-2% of a fact,
+    and every compass direction must match a computed body position.
+
+    Compass rule (set-level, no sentence parsing): a specific intercardinal
+    ("south-east") must equal some visible body's 8-wound direction exactly;
+    a bare cardinal ("south", "southern sky") must be a component of at
+    least one body's direction. A model that moves the moon 90 degrees
+    fails here even when all its numbers are individually innocent.
+    Skipped when the facts carry no azimuths (backward compatible).
 
     Returns (ok, problems). On failure the caller regenerates once, then
     falls back to the deterministic template narrator.
@@ -106,6 +115,40 @@ def validate_narration(text: str, facts: dict[str, float]) -> tuple[bool, list[s
     # Reject raw coordinate phrasing — narration speaks fist-widths, not degrees.
     if re.search(r"\d+\s*°|\d+\s*degrees?\s+(above|below)", text, flags=re.IGNORECASE):
         problems.append("raw coordinate phrasing — use fist-widths instead")
+    supported = set()
+    for key, value in facts.items():
+        if key.endswith(".azimuth_deg") and isinstance(value, (int, float)):
+            supported.add(az_to_compass(float(value)))
+    if supported:
+        components = set()
+        for wound in supported:
+            components.update(wound.split("-"))
+        for match in re.finditer(
+            r"\b(north|south|east|west)(?:[\s-]*(east|west))?\b", text, flags=re.IGNORECASE
+        ):
+            first, second = match.group(1).lower(), match.group(2)
+            if second:
+                wound = f"{first}-{second.lower()}"
+                if wound not in supported:
+                    problems.append(f"unsupported direction: {wound}")
+            elif first not in components:
+                problems.append(f"unsupported direction: {first}")
+        for match in re.finditer(
+            r"\b(northern|southern|eastern|western)\b", text, flags=re.IGNORECASE
+        ):
+            cardinal = {"northern": "north", "southern": "south",
+                        "eastern": "east", "western": "west"}[match.group(1).lower()]
+            if cardinal not in components:
+                problems.append(f"unsupported direction: {match.group(1).lower()}")
+        for match in re.finditer(
+            r"\b(southwestern|southeastern|northwestern|northeastern)\b",
+            text, flags=re.IGNORECASE,
+        ):
+            wound = {"southwestern": "south-west", "southeastern": "south-east",
+                     "northwestern": "north-west",
+                     "northeastern": "north-east"}[match.group(1).lower()]
+            if wound not in supported:
+                problems.append(f"unsupported direction: {wound}")
     return (not problems), problems
 
 

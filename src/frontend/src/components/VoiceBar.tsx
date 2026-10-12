@@ -97,6 +97,15 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
     setReply(null);
     setReplyAudio(null);
     setFailReason(null);
+    // The follow-up takes the stage: silence everything already talking —
+    // the pack narration and any previous reply — so two voices never
+    // overlap the new answer.
+    try {
+      replyAudioRef.current?.pause();
+    } catch {
+      // nothing playing locally
+    }
+    onTransport('pause');
     // Never answer for a silent default city: without a real fix (or a
     // prepared pack's sky) the reply would describe the wrong sky.
     const qlat = lat;
@@ -231,7 +240,11 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
                     )}
                   </div>
                 )}
-                {reply && <p className="text-xs text-white/65 leading-relaxed line-clamp-4">{reply}</p>}
+                {reply && (
+                  <p className="max-h-44 overflow-y-auto text-xs text-white/65 leading-relaxed pr-1">
+                    {reply}
+                  </p>
+                )}
                 <FollowUpBox onAsk={(q) => void askAgent(q)} />
                 <div className="flex flex-wrap gap-1.5">
                   {['describe the sky', 'tell me about tonight', 'repeat that', 'pause'].map((k) => (

@@ -62,20 +62,41 @@ export function streamPack(
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
+      window.clearTimeout(stall);
       es.close();
       reject(err);
     };
 
+    // Stall watchdog: heartbeats flow every 15 s, so 45 s of silence means
+    // a dead proxy/connection, not a slow server — fail over to POST
+    // instead of spinning forever on a frozen ritual.
+    const poke = () => {
+      window.clearTimeout(stall);
+      stall = window.setTimeout(() => {
+        fail(new Error('stream stalled'));
+      }, 45000);
+    };
+    let stall = window.setTimeout(() => {
+      fail(new Error('stream stalled'));
+    }, 45000);
+
     (['snapshot', 'narration', 'audio'] as const).forEach((stage) => {
       es.addEventListener(stage, () => {
+        poke();
         const label = stageLabel(stage);
         if (label) onStage(label);
       });
+    });
+    // Heartbeats prove liveness through buffering proxies; stage events
+    // alone can't, because narration legitimately sends none for a minute.
+    es.addEventListener('heartbeat', () => {
+      poke();
     });
     es.addEventListener('done', (e) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
+      window.clearTimeout(stall);
       es.close();
       try {
         resolve(JSON.parse((e as MessageEvent).data));

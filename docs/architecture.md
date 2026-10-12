@@ -60,8 +60,11 @@ apart share one cache entry instead of rebuilding the same sky from zero.
 Ordered rungs, first validated transcript wins: Gemini fast → Gemini
 large → Groq → NVIDIA NIM → template. Each rung carries a fallback model
 ID tried on 404/410-class errors (providers retire names without warning),
-each rung gets 55 seconds, and the whole walk gets 150 — past that the
-template answers rather than hanging. Every pack records which rung
+each rung gets 40 seconds, and the whole walk gets 100 — past that the
+template answers rather than hanging. Tight on purpose: a pack that
+outlives the hosting proxy's request window dies mid-stream and the user
+sees nothing for two attempts, so slow rungs fail fast and the healthy
+rungs behind them still get their turn. Every pack records which rung
 answered and why the others did not (`narration.provider`,
 `orchestrator`, `generation`), and the UI surfaces it. Voice answers run
 the direct-HTTPS rungs only (no harness spawn — a Node cold-start costs

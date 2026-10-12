@@ -1,6 +1,6 @@
 %% Model fallback chain — first validated transcript wins.
 %% Mirrors llm_provider.py: _stage order, DEFAULT_FALLBACK_MODELS,
-%% 55 s rung budget, 150 s global budget, retry on 404/410 with the
+%% 40 s rung budget, 100 s global budget, retry on 404/410 with the
 %% fallback ID, Mastra bridge tried before direct HTTPS.
 flowchart TB
     PROV{"LLM_PROVIDER?"}
