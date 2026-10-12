@@ -334,9 +334,13 @@ async def get_audio(pack_id: str) -> Response:
 async def voice_answer(body: dict) -> JSONResponse:
     """Spoken answer to a free-form voice question (M3 agent loop).
 
-    Builds a fresh snapshot for the given instant, runs the model chain at
-    a short 30-second budget, and renders TTS when configured. Satellites
-    and weather are skipped on purpose: voice answers must stay fast.
+    Builds a fresh snapshot for the given instant, runs the direct-HTTPS
+    model chain (no harness spawn — a Node cold-start costs more than a
+    voice answer's whole budget), and renders TTS when configured.
+    Hard-capped: narration gets 55 s wall-clock, then the template answers,
+    so the client's 100 s abort can never trigger from this endpoint.
+    Satellites and weather are skipped on purpose: voice answers must
+    stay fast.
     """
     try:
         lat = float(body.get("latitude"))
@@ -377,7 +381,16 @@ async def voice_answer(body: dict) -> JSONResponse:
                 prior.append(f"Earlier they asked: {q} You answered: {a}")
         if prior:
             question = "\n".join(prior) + "\nNow they follow up: " + question
-    result = await narrate_with_model(snap, 30, extra_context=question, budget_s=80.0)
+    try:
+        result = await asyncio.wait_for(
+            narrate_with_model(snap, 30, extra_context=question,
+                               budget_s=50.0, use_mastra=False),
+            timeout=55.0,
+        )
+    except (asyncio.TimeoutError, TimeoutError):
+        # Chain ate the whole voice budget (stacked provider timeouts).
+        # Fall through to the template — a fast honest answer beats none.
+        result = None
     if result is not None:
         text, provider, model = result["script"], result["provider"], result["model"]
         generation = result.get("generation")

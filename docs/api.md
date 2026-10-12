@@ -178,10 +178,10 @@ Returns the plain-text narration.
 ## `POST /api/voice/answer`
 
 Spoken answer to a free-form voice question (hands-free loop). Builds a
-fresh snapshot for the given instant, runs the model chain at a short
-30-second budget with the question honored first, and renders TTS when
-configured. Satellites and weather are skipped on purpose — voice answers
-must stay fast.
+fresh snapshot for the given instant, runs the direct-HTTPS chain rungs
+with the question honored first under a 55-second hard cap (then the
+template answers), and renders TTS when configured. Satellites and weather
+are skipped on purpose — voice answers must stay fast.
 
 **Request**
 

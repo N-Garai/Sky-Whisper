@@ -66,6 +66,19 @@ const QUESTION_OPENERS = [
   'could you', 'will there', 'do you',
 ];
 
+/**
+ * Named bodies — a question naming one is about THAT body ("tell me more
+ * about Saturn", "is Venus up tonight") and must reach the agent, never
+ * the whole-sky describe path. Generic words stay too: "what planets are
+ * up" is a listing question for the agent, not a narration request.
+ */
+const BODY_WORDS = [
+  'sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn',
+  'uranus', 'neptune', 'star', 'stars', 'planet', 'planets',
+  'constellation', 'orion', 'sirius', 'vega', 'polaris', 'iss',
+  'satellite', 'satellites', 'milky way', 'comet', 'meteor', 'meteors',
+];
+
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[?!.,;:]/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -87,7 +100,8 @@ export interface MatchOptions {
 
 /**
  * Match a final transcript against the keyword list. Priority order is
- * deliberate: volume, then transport controls, then narration, then wake.
+ * deliberate: volume, then transport controls, then preset narration
+ * phrases, then fuzzy sky/tonight describe (no named body), then wake.
  * After that, anything shaped like a genuine question goes to the agent —
  * no wake word required, because the mic is already explicitly on and the
  * user is clearly addressing the sky, not musing aloud.
@@ -115,6 +129,16 @@ export function matchIntent(transcript: string, opts: MatchOptions = {}): VoiceI
 
   const words = text.split(' ');
   const substantial = words.length >= 3;
+  // Fuzzy describe: sky/tonight talk with no named body in it ("what's
+  // tonight sky", "how's the sky tonight") is a narration request, even
+  // though it matches no preset phrase. Runs before question routing so
+  // such speech never pays for a server round-trip.
+  if (words.length >= 2) {
+    const tokens = new Set(words);
+    const skyTalk = tokens.has('sky') || tokens.has('tonight');
+    const namesBody = BODY_WORDS.some((b) => includesPhrase(text, b));
+    if (skyTalk && !namesBody) return { type: 'describe' };
+  }
   // Direct questions: ends with "?" or opens like one ("where can…").
   // The mic being on is consent enough — no wake word demanded.
   if (substantial) {

@@ -150,9 +150,11 @@ class TestVoiceEndpoint:
 
         from src.backend.narration import llm_provider
 
-        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None):
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None,
+                             use_mastra=True):
             assert extra_context and "bright" in extra_context
             assert duration_seconds == 30
+            assert use_mastra is False  # voice never pays for a harness spawn
             return {"script": "The moon is high and the night is clear for listening.",
                     "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],
                     "fallback_used": False, "model": "m", "provider": "test",
@@ -178,7 +180,8 @@ class TestVoiceEndpoint:
 
         seen: dict = {}
 
-        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None):
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None,
+                             use_mastra=True):
             seen["context"] = extra_context or ""
             return {"script": "Jupiter is the bright one you asked about, high in the south.",
                     "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],
@@ -196,6 +199,28 @@ class TestVoiceEndpoint:
         assert r.status_code == 200
         assert "Jupiter, high in the south" in seen["context"]
         assert "tell me more about Jupiter" in seen["context"]
+
+    def test_hung_chain_falls_back_to_template(self, client):
+        """A chain that eats the whole voice budget must not hang the
+        endpoint: the hard cap converts it to a template answer."""
+        import asyncio
+        from unittest.mock import patch
+
+        from src.backend.narration import llm_provider
+
+        async def fake_hang(*args, **kwargs):
+            raise asyncio.TimeoutError()
+
+        with patch.object(llm_provider, "narrate_with_model", side_effect=fake_hang):
+            r = client.post("/api/voice/answer", json={
+                "latitude": 22.5726, "longitude": 88.3639,
+                "timestamp": "2026-10-07T18:00:00Z",
+                "transcript": "what is that bright one",
+            })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["provider"] == "template"
+        assert len(body["reply"]) > 100
 
 
 class TestPackStream:
@@ -289,7 +314,8 @@ class TestPackStream:
 
         seen: dict = {}
 
-        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None):
+        async def fake_narrate(snap, duration_seconds=90, extra_context=None, budget_s=None,
+                             use_mastra=True):
             seen["context"] = extra_context or ""
             return {"script": "Jupiter is the bright one you asked about, high in the south.",
                     "word_count": 12, "word_budget": 72, "claims": [], "warnings": [],

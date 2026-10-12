@@ -64,8 +64,10 @@ each rung gets 55 seconds, and the whole walk gets 150 — past that the
 template answers rather than hanging. Every pack records which rung
 answered and why the others did not (`narration.provider`,
 `orchestrator`, `generation`), and the UI surfaces it. Voice answers run
-the same chain at a 30-second budget with an 80-second ceiling, carrying
-the listener's question and recent exchange as context.
+the direct-HTTPS rungs only (no harness spawn — a Node cold-start costs
+more than a voice answer's whole budget) under a 55-second hard cap, then
+the template answers; the endpoint carries the listener's question and
+recent exchange as context.
 
 ## Voice loop
 

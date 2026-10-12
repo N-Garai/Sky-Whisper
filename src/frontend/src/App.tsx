@@ -145,6 +145,17 @@ export default function App() {
     lat: geo.lat ?? 22.57,
     lon: geo.lon ?? 88.36,
   });
+  // Voice answers must never silently use the default city: prefer the live
+  // fix, fall back to the prepared pack's sky, else no coordinates at all
+  // (VoiceBar then says so instead of answering for the wrong place).
+  const snapLoc = packData?.snapshot?.location;
+  const askLat = geo.lat ?? (typeof snapLoc?.latitude === 'number' ? snapLoc.latitude : null);
+  const askLon = geo.lon ?? (typeof snapLoc?.longitude === 'number' ? snapLoc.longitude : null);
+  // Pointer opens only from a prepared pack, so the pack's sky always
+  // exists; live GPS wins when present. The trailing defaults are
+  // unreachable in practice (the button is snapshot-gated).
+  const ptrLat = askLat ?? (typeof snapLoc?.latitude === 'number' ? snapLoc.latitude : 22.57);
+  const ptrLon = askLon ?? (typeof snapLoc?.longitude === 'number' ? snapLoc.longitude : 88.36);
 
   const voiceDescribe = () => {
     if (hasPack) {
@@ -387,8 +398,8 @@ export default function App() {
           onReplay={voiceReplay}
           onTransport={voiceTransport}
           onVolume={voiceVolume}
-          lat={geo.lat}
-          lon={geo.lon}
+          lat={askLat}
+          lon={askLon}
         />
 
         <LocationGate
@@ -402,8 +413,8 @@ export default function App() {
         <BlackoutPointerGate
           open={pointerOpen}
           snapshot={snapshot}
-          lat={geo.lat ?? 22.57}
-          lon={geo.lon ?? 88.36}
+          lat={ptrLat}
+          lon={ptrLon}
           onClose={() => setPointerOpen(false)}
           onTransport={voiceTransport}
           onReplay={() => {

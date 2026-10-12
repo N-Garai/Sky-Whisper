@@ -374,6 +374,7 @@ def _result(snap: SkySnapshot, text: str, facts: dict, budget: int,
 async def narrate_with_model(
     snap: SkySnapshot, duration_seconds: int = 90,
     extra_context: str | None = None, budget_s: float | None = None,
+    use_mastra: bool = True,
 ) -> dict[str, Any] | None:
     """Walk the model chain. Returns the first validated transcript, or None
     so the caller uses the template narrator.
@@ -385,7 +386,9 @@ async def narrate_with_model(
     honored first by every path, including the Mastra workflow. The caller
     can read the reasons from `last_attempts()` after a None result. Mastra
     is tried once, on the first rung; its output still goes through the
-    same length and validation gates.
+    same length and validation gates. `use_mastra=False` skips the harness
+    spawn (a Node cold-start costs more than a voice answer's whole budget)
+    and walks the direct-HTTPS rungs only.
     """
     import time
 
@@ -423,7 +426,9 @@ async def narrate_with_model(
 
     # One harness spawn per pack: Node cold-start is the most expensive
     # step on a small instance, so Mastra rides the first rung only.
-    mastra_pending = mastra_up
+    # Voice answers skip it entirely (use_mastra=False): the spawn alone
+    # costs more than their whole time budget.
+    mastra_pending = mastra_up and use_mastra
 
     for cfg in stages:
         if time.monotonic() - started > budget_s:

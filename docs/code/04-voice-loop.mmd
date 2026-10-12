@@ -9,7 +9,7 @@ flowchart TB
     DESC["Describe intent<br/>generate or replay<br/>the pack audio"]
     CTRL["Replay, pause<br/>play, louder<br/>quieter, point"]
     AG["POST /api/voice/answer<br/>question + history<br/>+ snapshot context"]
-    TRY["Chain narrates once<br/>30 s budget,<br/>target-anchored"]
+    TRY["Direct chain only<br/>55 s hard cap,<br/>target-anchored"]
     TTSA["Spoken reply<br/>ElevenLabs MP3,<br/>browser voice for nacks"]
     MEM[("Conversation<br/>memory: last<br/>6 exchanges")]
 

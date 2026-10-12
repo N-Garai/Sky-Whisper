@@ -97,6 +97,18 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
     setReply(null);
     setReplyAudio(null);
     setFailReason(null);
+    // Never answer for a silent default city: without a real fix (or a
+    // prepared pack's sky) the reply would describe the wrong sky.
+    const qlat = lat;
+    const qlon = lon;
+    if (qlat === null || qlon === null) {
+      setAsk('error');
+      errorChime();
+      setFailReason(
+        'No location yet — share it in Prepare above, or prepare a pack first, so the answer is about your sky.',
+      );
+      return;
+    }
     await ensureAudio();
     workingChime();
     const ctrl = new AbortController();
@@ -107,8 +119,8 @@ export function VoiceBar({ onDescribe, onReplay, onTransport, onVolume, lat, lon
         headers: { 'Content-Type': 'application/json' },
         signal: ctrl.signal,
         body: JSON.stringify({
-          latitude: lat ?? 22.57,
-          longitude: lon ?? 88.36,
+          latitude: qlat,
+          longitude: qlon,
           timestamp: new Date().toISOString(),
           transcript: query,
           history: lastExchange.current ? [lastExchange.current] : [],
